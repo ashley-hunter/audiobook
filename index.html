@@ -177,6 +177,9 @@
         <button class="card-row card-row-btn" id="parent-add" type="button">Add stories from this device
           <span class="muted" id="added-count">None yet</span>
         </button>
+        <button class="card-row card-row-btn" id="install-row" type="button" hidden>Add to Home Screen
+          <span class="muted">Install</span>
+        </button>
       </div>
 
       <p class="section-label">Safety</p>
@@ -188,6 +191,9 @@
         <p class="muted muted-sm" id="storage-note">Stories are copied into this app, so they play with no signal.</p>
       </div>
       <div class="card" id="stored-list" hidden></div>
+
+      <p class="section-label">This device</p>
+      <div class="card" id="device-caps"></div>
 
       <p class="section-label">This week</p>
       <div class="card card-pad">
@@ -235,6 +241,7 @@
 
 <audio id="audio" preload="metadata" playsinline webkit-playsinline></audio>
 
+<script src="assets/js/capabilities.js"></script>
 <script src="assets/js/store.js"></script>
 <script src="assets/js/settings.js"></script>
 <script src="assets/js/id3.js"></script>

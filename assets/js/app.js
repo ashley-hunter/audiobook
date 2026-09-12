@@ -22,6 +22,8 @@ window.App = window.App || {};
   var importRows = {};
   var holdTimer = null;
   var holdStart = 0;
+  var persistedState = null;   // null until the browser has been asked
+  var spaceEstimate = null;    // null on browsers that will not say
 
   /* ==================================================================== boot */
 
@@ -40,7 +42,8 @@ window.App = window.App || {};
         applySettingsToForm();
         App.player.defaultSleepMinutes(App.settings.get().sleepMinutes);
         renderAll();
-        verifyStorage();
+        App.caps.idle(verifyStorage, 3000);
+        refreshStorageFacts();
         nudgeInstall();
         wireTeardown();
       })
@@ -68,11 +71,30 @@ window.App = window.App || {};
     navigator.serviceWorker.register('sw.js')['catch'](function () { return null; });
   }
 
+  /* Asks for protected storage and reads the real free space, where the
+   * browser offers either. On an iPhone 6 both come back null and the app
+   * falls back to reporting the bytes it holds, plus the startup audit that
+   * spots audio iOS has already reclaimed.
+   */
+  function refreshStorageFacts() {
+    App.caps.requestPersistence().then(function (granted) {
+      persistedState = granted;
+      return App.caps.estimate();
+    }).then(function (estimate) {
+      spaceEstimate = estimate;
+      renderStorage();
+      renderDeviceCaps();
+    })['catch'](function () { return null; });
+  }
+
   // A Home Screen install is what gives the player its full screen and its own
-  // storage. Said once, in passing, rather than as a banner.
+  // storage. Chromium can offer a button; Safari can only be told how.
   function nudgeInstall() {
-    var iOS = /iP(hone|ad|od)/.test(navigator.platform || navigator.userAgent);
-    if (iOS && navigator.standalone === false) {
+    App.caps.onInstallAvailable(function (available) {
+      ui.show($('install-row'), available);
+    });
+    if (App.caps.isStandalone()) return;
+    if (App.caps.isIOS()) {
       setTimeout(function () {
         ui.toast('Tip: Share → Add to Home Screen, so the player runs full screen.');
       }, 1500);
@@ -438,6 +460,7 @@ window.App = window.App || {};
 
   function renderParent() {
     var settings = App.settings.get();
+    renderDeviceCaps();
     ui.text($('parent-name'), settings.childName || 'Your child');
     ui.text($('ours-name'), settings.childName ? settings.childName + '’s' : 'the');
     ui.toggleClass($('ours-switch'), 'is-on', !!settings.showOurs);
@@ -483,6 +506,7 @@ window.App = window.App || {};
     var total = 0;
     stories.forEach(function (s) { total += s.size || 0; });
     ui.text($('storage-used'), ui.bytes(total) + ' stored');
+    ui.text($('storage-note'), storageNote());
 
     var host = $('stored-list');
     ui.clear(host);
@@ -503,6 +527,35 @@ window.App = window.App || {};
     });
   }
 
+  function storageNote() {
+    var parts = [];
+    if (spaceEstimate && spaceEstimate.quota > spaceEstimate.usage) {
+      parts.push(ui.bytes(spaceEstimate.quota - spaceEstimate.usage) + ' still free for this app');
+    } else {
+      parts.push('Copied into this app, so they play with no signal');
+    }
+    if (persistedState === true) parts.push('this phone has promised to keep them');
+    else if (persistedState === false) parts.push('iOS may reclaim them if space runs short');
+    return parts.join(' · ');
+  }
+
+  // Shows what this particular phone can and cannot do, so the fallbacks are
+  // visible rather than mysterious.
+  function renderDeviceCaps() {
+    var host = $('device-caps');
+    if (!host) return;
+    ui.clear(host);
+    App.caps.report({ persisted: persistedState }).forEach(function (row) {
+      var node = ui.el('div', 'cap');
+      var textWrap = ui.el('div', 'cap-text');
+      textWrap.appendChild(ui.el('p', 'cap-label', row.label));
+      textWrap.appendChild(ui.el('p', 'cap-note', row.note));
+      node.appendChild(textWrap);
+      node.appendChild(ui.el('span', 'cap-mark' + (row.ok ? ' is-on' : ''), row.ok ? '✓' : '–'));
+      host.appendChild(node);
+    });
+  }
+
   function removeStory(story) {
     if (!window.confirm('Remove "' + story.title + '" from this phone?')) return;
     if (App.player.currentStory() && App.player.currentStory().id === story.id) App.player.pause();
@@ -520,7 +573,9 @@ window.App = window.App || {};
 
   function renderWeek() {
     var week = App.stats.week();
-    ui.text($('week-listened'), ui.minutes(week.seconds) + ' listened');
+    ui.text($('week-listened'), week.seconds
+      ? ui.minutes(week.seconds) + ' listened'
+      : 'Nothing listened yet');
     ui.text($('week-nights'), week.nights
       ? 'Asleep before the timer on ' + week.slept + ' of ' + week.nights + ' nights'
       : 'No nights recorded yet');
@@ -561,6 +616,9 @@ window.App = window.App || {};
         finishRow(row, story);
         renderAll();
         updateImportLabel();
+        // Browsers weigh engagement, so a request right after a real import is
+        // far more likely to be granted than one at a cold start.
+        refreshStorageFacts();
         return next();
       })['catch'](function (err) {
         failRow(row, err && err.message ? err.message : 'Failed');
@@ -700,6 +758,11 @@ window.App = window.App || {};
     $('add-btn').onclick = openAdd;
     $('add-btn-saved').onclick = openAdd;
     $('parent-add').onclick = openAdd;
+    $('install-row').onclick = function () {
+      App.caps.promptInstall().then(function (accepted) {
+        if (accepted) ui.toast('Installed. Open Bedtime from the Home Screen.');
+      });
+    };
     $('add-close').onclick = function () {
       ui.toggleClass($('add'), 'is-open', false);
       $('add').setAttribute('aria-hidden', 'true');

@@ -6,7 +6,9 @@ web app, and the audio you add is copied into the app and played back from the
 phone, with no server and no signal needed.
 
 Built to run on an **iPhone 6**, which means the floor is **Safari 12 / iOS 12.5.7**.
-That constraint shapes most of what follows.
+Newer phones are not held down to that floor: anything that arrived later is
+used when it is there and has a stated fallback when it is not. Parent controls
+show which of them the phone in your hand actually has.
 
 ```
 npm install                 # playwright, for the browser tests only
@@ -26,7 +28,7 @@ There is no build step. The files you edit are the files that ship.
 | **Saved** | Everything hearted. |
 | **Player** | Starfield, progress ring, play/pause, sleep timer, and a "Sleep tight" curtain once the timer runs out. The sky darkens as the story progresses. |
 | **Sleep timer** | 10 / 20 / 30 minutes or to the end of the story. The sound fades out over the last 20 seconds. |
-| **Parent controls** | Hold the moon for three seconds. Bedtime, stories per night, default timer, child's name, safety switches, storage use, and the week's listening. |
+| **Parent controls** | Hold the moon for three seconds. Bedtime, stories per night, default timer, child's name, safety switches, storage use, what this device supports, and the week's listening. |
 | **Add stories** | Pick audio from the Files app. Each file is copied into the app, tagged, given cover art, and listed. |
 
 Everything is real: the settings persist, the listening statistics are counted
@@ -70,6 +72,28 @@ Screen app without warning and reopening it is a cold start, not a resume.
 
 ---
 
+## What a newer phone gets, and what the iPhone 6 does instead
+
+Every API past the floor is detected in one place, `assets/js/capabilities.js`,
+and each is paired with the behaviour used when it is missing. Nothing else in
+the app touches these directly, which `npm run check` enforces.
+
+| Capability | Arrived | On a newer phone | On the iPhone 6 |
+| --- | --- | --- | --- |
+| Media Session | Safari 15 | Title, artwork and play/pause on the lock screen, Control Center and headphones, with a live position scrubber and 15 second skips | In-app controls only |
+| `navigator.audioSession` | Safari 16.4 | Audio is declared as playback, so it ignores the silent switch and backgrounds properly | The silent switch stops it |
+| `storage.persist()` | Safari 15.2 | The browser is asked to protect the stored audio, again after each import when engagement is highest | Audio can be evicted; the app detects it and says so |
+| `storage.estimate()` | Safari 15.2 | Parent controls show the real space left for the app | Shows the bytes held |
+| `Blob.arrayBuffer()` | Safari 14 | Chunks are read straight to an ArrayBuffer | `FileReader` |
+| `requestIdleCallback` | Safari 18 | The startup storage audit waits for a quiet moment | A short `setTimeout` |
+| `beforeinstallprompt` | Chromium only | An Install row in parent controls | The Share -> Add to Home Screen tip |
+
+The **"This device"** card in parent controls lists these live with a tick or a
+dash and a plain-language reason, so the fallbacks are visible rather than
+mysterious, and so device testing does not need a console.
+
+---
+
 ## Known iOS limits
 
 These are platform facts, not things left to do.
@@ -77,27 +101,25 @@ These are platform facts, not things left to do.
 **Background audio is the risk to watch.** On iOS 12, a Home Screen web app
 generally stops playing when the screen locks or the app is backgrounded. You
 said this is fine for your setup; if it turns out not to be, no amount of code
-changes it, and the answer is a native or Capacitor wrapper.
+changes it, and the answer is a native or Capacitor wrapper. On iOS 16.4 and up
+the app declares its audio as playback, which helps, but it cannot help iOS 12.
 
-**No lock screen controls.** The Media Session API landed in iOS 15. On iOS 12
-there is no title, artwork, or play/pause from Control Center or headphones,
-and there is no way to add them.
-
-**No screen wake lock.** The Wake Lock API is not available, so the app cannot
-keep the screen on.
+**No screen wake lock.** The Wake Lock API is not available on iOS at all, so
+the app cannot keep the screen on. It would be the wrong thing for a bedtime
+player anyway.
 
 **`audio.volume` is read-only on iOS.** The sleep timer's fade therefore routes
 the element through Web Audio and ramps a `GainNode`. That routing is permanent
 for the life of an element, so the player throws the element away after a fade
-and builds a fresh one. If Web Audio is unavailable or its context will not
-resume, the timer stops the story without a fade rather than failing.
+and builds a fresh one. Where `volume` is writable (Android, desktop) it ramps
+that instead. If neither works, the timer stops the story without a fade rather
+than failing.
 
-**Storage can be taken away.** Safari 12 has no `navigator.storage.persist()`,
-so stored audio cannot be marked as protected and iOS may evict it under
-pressure. The app checks every story's first chunk at startup and marks the ones
-whose audio has gone with "Needs adding again - the phone cleared it", rather
-than failing at the moment a child presses play. Expect the permission prompt
-for storage past roughly 50 MB.
+**Storage can still be taken away.** `storage.persist()` is a request, not a
+guarantee, and Safari 12 has no such request at all. Either way the app checks
+every story's first chunk at startup and marks the ones whose audio has gone
+with "Needs adding again - the phone cleared it", rather than failing at the
+moment a child presses play. Expect a permission prompt past roughly 50 MB.
 
 **The file picker only sees Files and iCloud Drive.** It cannot reach the Music
 library or anything with DRM from Apple Music. The `accept` list is deliberately
@@ -106,14 +128,33 @@ broad, because a bare `accept="audio/*"` hides `.m4b` files in the iOS picker.
 **Codecs.** MP3, AAC/M4A, M4B, WAV and FLAC play. Opus, Ogg Vorbis and WebM do
 not, on any iOS 12 device.
 
+**Considered and left out.** The Origin Private File System (Safari 15.2) would
+be a tidier home for the audio on a modern phone, but it would mean a second
+storage backend and a migration for a difference no one can see - the service
+worker route already keeps memory flat. Worth revisiting only if the iPhone 6
+stops being a requirement.
+
 ---
 
 ## Staying inside Safari 12
 
-`npm run check` fails the build on anything that shipped after the floor. It is
-worth running before every commit, because the failure mode on the device is
-silent: a CSS property is ignored and the layout quietly collapses, or a JS
-operator is a parse error and the whole file stops running.
+`npm run check` is worth running before every commit, because the failure mode
+on the device is silent: a CSS property is ignored and the layout quietly
+collapses, or a JS operator is a parse error and the whole file stops running.
+
+It enforces two different rules, because the two failures are not alike:
+
+- **Syntax is absolute.** A `?.` anywhere is a parse error on the target device
+  and stops the whole file from running, so no amount of feature detection saves
+  it. Checked in every shipped file, `capabilities.js` included.
+- **APIs are about reach.** A missing `navigator.mediaSession` is survivable if
+  it is detected. These are allowed in `assets/js/capabilities.js`, or on a line
+  marked `// caps-ok` for a guarded one-off. Anywhere else they fail, so an
+  unguarded call cannot drift into the app.
+
+CSS that Safari 12 ignores harmlessly (`:focus-visible`, `overscroll-behavior`)
+is allowed, but each gets its own rule block - Safari 12 throws away an entire
+rule when one selector in the list is unknown, and the check catches that too.
 
 What the code avoids, and what it does instead:
 
@@ -168,6 +209,7 @@ index.html                  every screen's markup, rendered once
 manifest.webmanifest        used by Android; iOS reads the apple-* meta tags
 sw.js                       shell cache + the ./media/<id> range route
 assets/css/app.css          one stylesheet, tokens at the top
+assets/js/capabilities.js   every post-floor API, detected with its fallback
 assets/js/store.js          IndexedDB: stories, chunks, art, settings
 assets/js/settings.js       parent settings + the weekly listening record
 assets/js/id3.js            ID3v2 and MP4 tag reading
@@ -208,7 +250,11 @@ Settings → Pages → Source: GitHub Actions.
   including a truncated tag and an M4B with its metadata past the 1 MiB head.
 - `test/browser.test.js` - a real import, range requests that straddle a chunk
   boundary, the 4 MiB window cap, playback, the sleep timer pausing with the
-  audio, persistence across a reload, and the Blob fallback.
+  audio, persistence across a reload, and the Blob fallback. It then runs a
+  **second pass with every post-floor API deleted before the page loads**, which
+  is what an iPhone 6 presents, and checks that import, playback, the storage
+  wording and the device list all still work without them. Testing only the
+  enhanced path would prove nothing about the phone this is for.
 
 The browser tests run in Chromium, so they prove the logic, not Safari 12
 behaviour. **These still need checking by hand on the iPhone 6:**
@@ -222,3 +268,6 @@ behaviour. **These still need checking by hand on the iPhone 6:**
 4. The storage permission prompt past roughly 50 MB.
 5. Whether the stored audio is still there a week later, having not opened the
    app in between.
+
+Open parent controls on any device to see the "This device" card, which answers
+most of what the enhanced path is doing without needing a console.

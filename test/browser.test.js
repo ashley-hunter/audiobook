@@ -201,6 +201,16 @@ function writeWav(file, seconds) {
   check('audio plays from stored chunks', state.playing && state.t > 0, JSON.stringify(state));
   check('duration reaches the player', state.d === 40, 'd=' + state.d);
 
+  const session = await page.evaluate(() => ({
+    supported: App.caps.supports('mediaSession'),
+    title: navigator.mediaSession && navigator.mediaSession.metadata
+      ? navigator.mediaSession.metadata.title : null,
+    playbackState: navigator.mediaSession ? navigator.mediaSession.playbackState : null,
+  }));
+  check('lock screen metadata is published where supported',
+    session.supported && session.title === 'Sleepy Foxes' && session.playbackState === 'playing',
+    JSON.stringify(session));
+
   /* ------------------------------------------------------------ sleep timer */
   await page.locator('#open-sheet').click();
   await page.waitForTimeout(500);
@@ -262,6 +272,98 @@ function writeWav(file, seconds) {
   check('empty state returns', await page.locator('#library-empty').isVisible());
 
   check('no JavaScript errors at any point', errors.length === 0, errors.join(' | '));
+
+  /* ============================================================================
+     Second pass with every post-floor API removed, which is what an iPhone 6
+     actually presents. The app has to behave identically, minus the extras.
+     ========================================================================== */
+  const oldCtx = await browser.newContext({
+    viewport: { width: 375, height: 667 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  await oldCtx.addInitScript(() => {
+    delete Blob.prototype.arrayBuffer;
+    delete window.requestIdleCallback;
+    try { Object.defineProperty(navigator, 'mediaSession', { get: () => undefined }); } catch (e) { /* ignore */ }
+    try { Object.defineProperty(navigator, 'storage', { get: () => undefined }); } catch (e) { /* ignore */ }
+    delete window.MediaMetadata;
+  });
+
+  const old = await oldCtx.newPage();
+  const oldErrors = [];
+  old.on('pageerror', (e) => oldErrors.push('pageerror: ' + e.message));
+  old.on('console', (m) => {
+    if (m.type() === 'error' && m.text().indexOf('416') < 0) oldErrors.push('console: ' + m.text());
+  });
+
+  await old.goto(ORIGIN, { waitUntil: 'networkidle' });
+  await old.waitForTimeout(900);
+
+  const caps = await old.evaluate(() => ({
+    mediaSession: App.caps.supports('mediaSession'),
+    blobArrayBuffer: App.caps.supports('blobArrayBuffer'),
+    persistentStorage: App.caps.supports('persistentStorage'),
+    storageEstimate: App.caps.supports('storageEstimate'),
+    idleCallback: App.caps.supports('idleCallback'),
+    serviceWorker: App.caps.supports('serviceWorker'),
+  }));
+  check('old device reports the modern APIs as absent',
+    !caps.mediaSession && !caps.blobArrayBuffer && !caps.persistentStorage &&
+    !caps.storageEstimate && !caps.idleCallback && caps.serviceWorker,
+    JSON.stringify(caps));
+
+  const oldMoon = await old.locator('#moon-btn').boundingBox();
+  await old.mouse.move(oldMoon.x + oldMoon.width / 2, oldMoon.y + oldMoon.height / 2);
+  await old.mouse.down();
+  await old.waitForTimeout(3400);
+  await old.mouse.up();
+  await old.locator('#parent-add').click();
+  await old.waitForTimeout(400);
+  await old.locator('#file-input').setInputFiles(FIXTURE);
+  await old.waitForFunction(
+    () => { const n = document.querySelector('.import-status'); return n && n.textContent === 'Ready'; },
+    null, { timeout: 60000 }
+  );
+  const oldRecord = await old.evaluate(() => App.debug.stories()[0]);
+  check('import works through FileReader',
+    oldRecord && oldRecord.size === FIXTURE_BYTES && oldRecord.len === 40,
+    JSON.stringify(oldRecord && { size: oldRecord.size, len: oldRecord.len }));
+
+  await old.locator('#add-close').click();
+  await old.locator('#parent-close').click();
+  await old.waitForTimeout(600);
+  await old.locator('#library-rows .row .row-open').click();
+  await old.waitForTimeout(2500);
+  const oldState = await old.evaluate(() => ({ playing: App.player.playing(), t: App.player.position() }));
+  check('playback works with no Media Session', oldState.playing && oldState.t > 0, JSON.stringify(oldState));
+
+  await old.locator('#player-close').click();
+  await old.waitForTimeout(400);
+  const oldMoon2 = await old.locator('#moon-btn').boundingBox();
+  await old.mouse.move(oldMoon2.x + oldMoon2.width / 2, oldMoon2.y + oldMoon2.height / 2);
+  await old.mouse.down();
+  await old.waitForTimeout(3400);
+  await old.mouse.up();
+  await old.waitForTimeout(500);
+
+  const note = await old.evaluate(() => document.getElementById('storage-note').textContent);
+  check('storage note falls back to bytes held',
+    note.indexOf('play with no signal') >= 0 || note.indexOf('no signal') >= 0, note);
+
+  const capRows = await old.evaluate(() => {
+    return Array.prototype.map.call(document.querySelectorAll('#device-caps .cap'), (n) => ({
+      label: n.querySelector('.cap-label').textContent,
+      on: n.querySelector('.cap-mark').className.indexOf('is-on') >= 0,
+    }));
+  });
+  check('device list names the four capabilities', capRows.length === 4, JSON.stringify(capRows.map((r) => r.label)));
+  check('device list marks lock screen controls as missing',
+    capRows.length === 4 && capRows[1].on === false, JSON.stringify(capRows[1]));
+  check('device list still confirms offline playback',
+    capRows.length === 4 && capRows[0].on === true, JSON.stringify(capRows[0]));
+
+  check('no JavaScript errors on the old device', oldErrors.length === 0, oldErrors.join(' | '));
 
   await browser.close();
   server.close();

@@ -12,6 +12,7 @@ App.player = (function () {
 
   var FADE_SECONDS = 20;    // how long the story takes to fade to silence
   var SAVE_EVERY = 5;       // seconds between position checkpoints
+  var SEEK_STEP = 15;       // lock screen skip, where the platform offers one
 
   var audio = null;
   var story = null;
@@ -50,8 +51,16 @@ App.player = (function () {
     el.addEventListener('ended', onEnded);
     // The sleep timer follows the element, not our own calls, so an
     // interruption (a phone call, another app taking audio) pauses it too.
-    el.addEventListener('play', function () { resumeSleep(); emit('state', true); });
-    el.addEventListener('pause', function () { suspendSleep(); emit('state', false); });
+    el.addEventListener('play', function () {
+      resumeSleep();
+      App.caps.media.setPlaybackState(true);
+      emit('state', true);
+    });
+    el.addEventListener('pause', function () {
+      suspendSleep();
+      App.caps.media.setPlaybackState(false);
+      emit('state', false);
+    });
     el.addEventListener('loadedmetadata', function () { emit('tick', position(), duration()); });
     return el;
   }
@@ -62,12 +71,58 @@ App.player = (function () {
     if (existing && existing.parentNode) existing.parentNode.replaceChild(audio, existing);
     else document.body.appendChild(audio);
 
+    // Safari 16.4 and up: mark this as playback rather than an incidental
+    // sound, so it survives the silent switch. Older iOS simply does without.
+    App.caps.claimPlaybackAudio();
+    registerLockScreenControls();
+
     ticker = setInterval(tick, 1000);
     document.addEventListener('visibilitychange', function () {
       if (!document.hidden) tick();     // catch up after the app was backgrounded
       else checkpoint(true);
     });
     window.addEventListener('pagehide', function () { checkpoint(true); });
+  }
+
+  /* Lock screen and headphone controls on iOS 15+, Android and desktop. On an
+   * iPhone 6 none of this exists and the in-app controls are the only ones.
+   */
+  function registerLockScreenControls() {
+    App.caps.media.setActions({
+      play: function () { play(); },
+      pause: function () { pause(); },
+      stop: function () { pause(); },
+      back: function () { seekBy(-SEEK_STEP); },
+      forward: function () { seekBy(SEEK_STEP); }
+    });
+  }
+
+  function publishNowPlaying() {
+    if (!story) return;
+    App.caps.media.setMetadata({
+      title: story.title,
+      artist: story.narrator && story.narrator !== 'you' ? 'Read by ' + story.narrator : 'Bedtime',
+      album: story.album || 'Bedtime'
+    });
+    App.caps.media.setPlaybackState(playing());
+    if (story.hasArt) {
+      App.media.artUrl(story.id).then(function (url) {
+        if (!url || !story || story.id !== (currentStory() && currentStory().id)) return;
+        App.caps.media.setMetadata({
+          title: story.title,
+          artist: story.narrator && story.narrator !== 'you' ? 'Read by ' + story.narrator : 'Bedtime',
+          album: story.album || 'Bedtime',
+          artwork: url
+        });
+      });
+    }
+  }
+
+  function seekBy(seconds) {
+    if (!story || !audio) return;
+    var target = Math.max(0, Math.min(duration() - 1, position() + seconds));
+    try { audio.currentTime = target; } catch (err) { void err; }
+    checkpoint(true);
   }
 
   function replaceAudio() {
@@ -102,6 +157,7 @@ App.player = (function () {
       audio.load();
       var startAt = typeof opts.startAt === 'number' ? opts.startAt : (story.pos || 0);
       if (startAt > 1) seekWhenReady(startAt);
+      publishNowPlaying();
       emit('loaded', story);
       if (opts.autoplay) return play();
       return null;
@@ -239,6 +295,7 @@ App.player = (function () {
     }
 
     emit('tick', position(), duration());
+    if (isPlaying) App.caps.media.setPosition(duration(), position(), audio.playbackRate || 1);
 
     if (!sleepDeadline || !isPlaying) {
       emit('sleep', sleepLeft());
@@ -404,6 +461,7 @@ App.player = (function () {
     play: play,
     pause: pause,
     toggle: toggle,
+    seekBy: seekBy,
     wake: wake,
     position: position,
     duration: duration,

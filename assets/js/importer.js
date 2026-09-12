@@ -48,12 +48,7 @@ App.importer = (function () {
   }
 
   function readChunk(file, start, size) {
-    return new Promise(function (resolve, reject) {
-      var reader = new FileReader();
-      reader.onload = function () { resolve(reader.result); };
-      reader.onerror = function () { reject(reader.error || new Error('Could not read the file')); };
-      reader.readAsArrayBuffer(file.slice(start, Math.min(file.size, start + size)));
-    });
+    return App.caps.readArrayBuffer(file.slice(start, Math.min(file.size, start + size)));
   }
 
   function friendlyError(err) {
@@ -158,12 +153,7 @@ App.importer = (function () {
     if (!file || file.type.indexOf('image') !== 0) {
       return Promise.reject(new Error('That is not an image.'));
     }
-    return new Promise(function (resolve, reject) {
-      var reader = new FileReader();
-      reader.onload = function () { resolve(reader.result); };
-      reader.onerror = function () { reject(reader.error || new Error('Could not read the image')); };
-      reader.readAsArrayBuffer(file);
-    }).then(function (buffer) {
+    return App.caps.readArrayBuffer(file).then(function (buffer) {
       return App.store.putArt(storyId, buffer, file.type);
     }).then(function () {
       App.media.forgetArt(storyId);

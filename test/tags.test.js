@@ -35,12 +35,27 @@ class FakeFileReader {
 }
 
 // id3.js assigns to a bare `App`, so `window` has to be the global itself,
-// exactly as it is in a browser.
-const sandbox = { TextDecoder, FileReader: FakeFileReader, Promise, setTimeout, console };
+// exactly as it is in a browser. FileReader is shimmed and Blob.arrayBuffer is
+// left undefined on purpose, so these tests exercise the iOS 12 read path.
+const sandbox = {
+  TextDecoder,
+  FileReader: FakeFileReader,
+  Blob: function () {},
+  navigator: { platform: 'iPhone', userAgent: 'iPhone' },
+  addEventListener: () => {},
+  Promise,
+  setTimeout,
+  console,
+};
 sandbox.window = sandbox;
 vm.createContext(sandbox);
-vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'assets', 'js', 'id3.js'), 'utf8'), sandbox);
+for (const file of ['capabilities.js', 'id3.js']) {
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'assets', 'js', file), 'utf8'), sandbox);
+}
 const tags = sandbox.App.tags;
+
+check('falls back to FileReader when Blob.arrayBuffer is missing',
+  sandbox.App.caps.supports('blobArrayBuffer'), false);
 
 /* ------------------------------------------------------------ tag builders */
 

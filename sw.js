@@ -20,6 +20,7 @@ var SHELL = [
   'index.html',
   'manifest.webmanifest',
   'assets/css/app.css',
+  'assets/js/capabilities.js',
   'assets/js/store.js',
   'assets/js/settings.js',
   'assets/js/id3.js',
