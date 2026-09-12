@@ -1,0 +1,17 @@
+{
+  "name": "bedtime",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A bedtime audiobook player that runs as a Home Screen web app and keeps stories on the phone.",
+  "scripts": {
+    "serve": "node test/serve.js",
+    "check": "node scripts/check-ios12.js",
+    "test:tags": "node test/tags.test.js",
+    "test:browser": "node test/browser.test.js",
+    "test": "npm run check && npm run test:tags && npm run test:browser",
+    "icons": "python3 scripts/make-icons.py"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}

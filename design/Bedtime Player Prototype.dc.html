@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700&family=Karla:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#EDE9E1;font-family:Karla,system-ui,sans-serif;display:flex;justify-content:center;align-items:flex-start;padding:28px 0}
+a{color:#3A4EA8}a:hover{color:#1F2F78}
+@keyframes twinkle{0%,100%{opacity:.35}50%{opacity:.9}}
+@keyframes drift{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+</style></helmet>
+
+<x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" dark="{{ true }}" hint-size="402px,874px">
+<div style="position:relative;height:874px;overflow:hidden;background:#0A0F2A;font-family:Karla,system-ui,sans-serif;color:#F4F1EA">
+
+  <div style="position:absolute;inset:0;background:linear-gradient(#0A0F2A,#151238);overflow-y:auto">
+    <div style="padding:70px 24px 140px;display:{{ dHome }};flex-direction:column">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+        <div>
+          <div style="font-family:'Baloo 2',sans-serif;font-weight:700;font-size:32px;line-height:1.1">Good night, {{ childName }}</div>
+          <div style="margin-top:5px;font-size:15px;color:rgba(244,241,234,.55)">{{ homeSub }}</div>
+        </div>
+        <div onPointerDown="{{ holdStart }}" onPointerUp="{{ holdEnd }}" onPointerLeave="{{ holdEnd }}" style="width:46px;height:46px;flex:none;border-radius:50%;position:relative;background:rgba(255,255,255,.07);display:flex;align-items:center;justify-content:center;cursor:pointer;touch-action:none">
+          <div style="position:absolute;inset:-3px;border-radius:50%;background:conic-gradient(#F2C97C {{ holdPct }},transparent 0)"></div>
+          <div style="position:absolute;inset:0;border-radius:50%;background:#1A1B3C"></div>
+          <span style="position:relative;font-size:19px;color:#F2C97C">☾</span>
+        </div>
+      </div>
+
+      <div onClick="{{ openCurrent }}" style="margin-top:26px;display:flex;gap:16px;padding:16px;border-radius:26px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.08);align-items:center;cursor:pointer">
+        <div style="width:88px;height:88px;border-radius:18px;flex:none;background:{{ currentCover }}"></div>
+        <div style="flex:1;min-width:0">
+          <div style="font:600 11px/1 ui-monospace,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:#F2C97C">Keep going</div>
+          <div style="margin-top:7px;font-family:'Baloo 2',sans-serif;font-weight:600;font-size:20px;line-height:1.2">{{ currentTitle }}</div>
+          <div style="margin-top:9px;height:6px;border-radius:99px;background:rgba(255,255,255,.12)"><div style="width:{{ currentPct }};height:100%;border-radius:99px;background:#F2C97C"></div></div>
+        </div>
+        <div style="width:52px;height:52px;border-radius:50%;flex:none;background:linear-gradient(#FFE0A3,#F2B95E);display:flex;align-items:center;justify-content:center"><div style="width:0;height:0;border-left:16px solid #20142E;border-top:10px solid transparent;border-bottom:10px solid transparent;margin-left:4px"></div></div>
+      </div>
+
+      <div style="margin-top:32px;font-family:'Baloo 2',sans-serif;font-weight:600;font-size:21px">Tonight's picks</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px">
+        <sc-for list="{{ picks }}" as="s" hint-placeholder-count="4">
+          <div onClick="{{ s.open }}" style="display:flex;flex-direction:column;gap:9px;cursor:pointer">
+            <div style="height:150px;border-radius:20px;background:{{ s.cover }}"></div>
+            <div style="font-weight:600;font-size:15px;line-height:1.25">{{ s.title }}</div>
+            <div style="font-size:13px;color:rgba(244,241,234,.5)">{{ s.mins }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="margin-top:36px;display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+        <div style="font-family:'Baloo 2',sans-serif;font-weight:600;font-size:21px">All stories</div>
+        <div onClick="{{ openAdd }}" style="display:flex;align-items:center;gap:7px;min-height:36px;padding:0 14px;border-radius:18px;background:rgba(255,255,255,.08);cursor:pointer;font-size:14px;font-weight:600;color:#F2C97C"><span style="font-size:17px;line-height:1">+</span>Add</div>
+      </div>
+      <div style="display:flex;gap:9px;margin-top:14px;flex-wrap:wrap">
+        <sc-for list="{{ moods }}" as="m" hint-placeholder-count="5">
+          <div onClick="{{ m.pick }}" style="padding:10px 17px;border-radius:99px;cursor:pointer;font-size:14px;font-weight:{{ m.weight }};background:{{ m.bg }};color:{{ m.fg }}">{{ m.name }}</div>
+        </sc-for>
+      </div>
+      <div style="margin-top:18px;display:flex;flex-direction:column;gap:14px">
+        <sc-for list="{{ libraryList }}" as="s" hint-placeholder-count="5">
+          <div style="display:flex;gap:14px;align-items:center;padding:12px;border-radius:22px;background:rgba(255,255,255,.05)">
+            <div onClick="{{ s.open }}" style="width:76px;height:76px;border-radius:16px;flex:none;cursor:pointer;background:{{ s.cover }}"></div>
+            <div onClick="{{ s.open }}" style="flex:1;min-width:0;cursor:pointer">
+              <div style="font-family:'Baloo 2',sans-serif;font-weight:600;font-size:19px;line-height:1.2">{{ s.title }}</div>
+              <div style="margin-top:4px;font-size:13px;color:rgba(244,241,234,.5)">{{ s.meta }}</div>
+            </div>
+            <div onClick="{{ s.fav }}" style="width:44px;height:44px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:19px;color:{{ s.favColor }}">♥</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="padding:70px 24px 140px;display:{{ dSaved }};flex-direction:column">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+        <div>
+          <div style="font-family:'Baloo 2',sans-serif;font-weight:700;font-size:32px">Saved stories</div>
+          <div style="margin-top:6px;font-size:15px;color:rgba(244,241,234,.55)">{{ savedSub }}</div>
+        </div>
+        <div onClick="{{ openAdd }}" style="display:flex;align-items:center;gap:7px;min-height:40px;padding:0 14px;border-radius:20px;background:rgba(255,255,255,.08);cursor:pointer;font-size:14px;font-weight:600;color:#F2C97C;flex:none"><span style="font-size:17px;line-height:1">+</span>Add</div>
+      </div>
+      <div style="margin-top:22px;display:flex;flex-direction:column;gap:14px">
+        <sc-for list="{{ savedList }}" as="s" hint-placeholder-count="2">
+          <div onClick="{{ s.open }}" style="display:flex;gap:14px;align-items:center;padding:12px;border-radius:22px;background:rgba(255,255,255,.05);cursor:pointer">
+            <div style="width:76px;height:76px;border-radius:16px;flex:none;background:{{ s.cover }}"></div>
+            <div style="flex:1;min-width:0">
+              <div style="font-family:'Baloo 2',sans-serif;font-weight:600;font-size:19px;line-height:1.2">{{ s.title }}</div>
+              <div style="margin-top:4px;font-size:13px;color:rgba(244,241,234,.5)">{{ s.meta }}</div>
+            </div>
+            <div style="color:#F2839B;font-size:19px">♥</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <div style="position:absolute;left:24px;right:24px;bottom:30px;height:72px;border-radius:36px;background:rgba(20,22,52,.72);border:1px solid rgba(255,255,255,.1);backdrop-filter:blur(22px);display:flex;align-items:center;justify-content:space-around;font-size:13px;z-index:5">
+    <div onClick="{{ goHome }}" style="display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;width:80px;color:{{ cHome }}"><span style="font-size:18px">☾</span>Tonight</div>
+    <div onClick="{{ goSaved }}" style="display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;width:80px;color:{{ cSaved }}"><span style="font-size:18px">♥</span>Saved</div>
+  </div>
+
+  <div style="position:absolute;inset:0;z-index:10;transform:{{ playerT }};transition:transform .46s cubic-bezier(.32,.72,0,1);background:linear-gradient(#05061A 0%,#0C1233 42%,#1B2050 74%,#2C2450 100%);overflow:hidden">
+    <div style="position:absolute;inset:0;background:#03040E;opacity:{{ skyDim }};transition:opacity 1.4s ease"></div>
+    <div style="position:absolute;top:120px;left:60px;width:2px;height:2px;border-radius:50%;background:#fff;animation:twinkle 4s ease-in-out infinite;box-shadow:34px 18px 0 #fff,88px -46px 0 rgba(255,255,255,.7),150px 40px 0 rgba(255,255,255,.5),210px -20px 0 #fff,268px 66px 0 rgba(255,255,255,.6),310px -60px 0 rgba(255,255,255,.8),20px 150px 0 rgba(255,255,255,.5),120px 210px 0 rgba(255,255,255,.7),250px 176px 0 rgba(255,255,255,.45),300px 250px 0 #fff,60px 300px 0 rgba(255,255,255,.4),190px 330px 0 rgba(255,255,255,.6),-30px 420px 0 rgba(255,255,255,.35),330px 420px 0 rgba(255,255,255,.5)"></div>
+    <div style="position:absolute;top:168px;right:34px;width:66px;height:66px;border-radius:50%;background:radial-gradient(circle at 34% 32%,#FFF3D6,#F2C97C);box-shadow:0 0 60px 18px rgba(242,201,124,.22);animation:drift 9s ease-in-out infinite"></div>
+
+    <div style="position:relative;display:flex;flex-direction:column;height:100%;box-sizing:border-box;padding:62px 26px 44px">
+      <div style="display:flex;align-items:center;justify-content:space-between;height:44px">
+        <div onClick="{{ closePlayer }}" style="width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.08);font-size:19px;cursor:pointer">⌄</div>
+        <div style="font:600 12px/1 ui-monospace,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:rgba(237,233,245,.55)">Tonight's story</div>
+        <div onClick="{{ toggleFav }}" style="width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.08);font-size:19px;cursor:pointer;color:{{ favColor }}">♥</div>
+      </div>
+
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:30px">
+        <div style="position:relative;width:250px;height:250px;border-radius:50%;padding:9px;box-sizing:border-box;background:conic-gradient(#F2C97C {{ progA }},rgba(255,255,255,.14) 0)">
+          <div style="width:100%;height:100%;border-radius:50%;background:{{ currentCover }}"></div>
+        </div>
+        <div style="text-align:center;padding:0 10px">
+          <div style="font-family:'Baloo 2',sans-serif;font-weight:700;font-size:34px;line-height:1.15;text-wrap:pretty">{{ currentTitle }}</div>
+          <div style="margin-top:7px;font-size:15px;color:rgba(246,242,234,.6)">{{ currentMeta }}</div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;font:500 13px/1 ui-monospace,Menlo,monospace;color:rgba(246,242,234,.5);margin-bottom:26px">
+        <span>{{ elapsed }}</span><span>{{ remaining }}</span>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:center;gap:34px">
+        <div onClick="{{ openSheet }}" style="width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.08);font-size:22px;cursor:pointer">☾</div>
+        <div onClick="{{ togglePlay }}" style="width:104px;height:104px;border-radius:50%;background:linear-gradient(#FFE0A3,#F2B95E);box-shadow:0 14px 40px rgba(242,185,94,.35);display:flex;align-items:center;justify-content:center;cursor:pointer">
+          <div style="font-family:'Baloo 2',sans-serif;font-weight:700;font-size:19px;color:#20142E;letter-spacing:.04em">{{ playLabel }}</div>
+        </div>
+        <div onClick="{{ goLibFromPlayer }}" style="width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.08);font-size:20px;cursor:pointer">☰</div>
+      </div>
+      <div style="text-align:center;margin-top:20px;font-size:13px;color:rgba(246,242,234,.5)">{{ sleepLabel }}</div>
+    </div>
+
+    <div style="position:absolute;inset:0;background:rgba(3,4,14,.6);backdrop-filter:blur(3px);opacity:{{ sheetO }};pointer-events:{{ sheetPE }};transition:opacity .3s ease" onClick="{{ closeSheet }}"></div>
+    <div style="position:absolute;left:0;right:0;bottom:0;transform:{{ sheetT }};transition:transform .42s cubic-bezier(.32,.72,0,1);border-radius:34px 34px 0 0;background:#14183A;border-top:1px solid rgba(255,255,255,.1);padding:16px 24px 46px;box-sizing:border-box">
+      <div style="width:44px;height:5px;border-radius:99px;background:rgba(255,255,255,.22);margin:0 auto 22px"></div>
+      <div style="font-family:'Baloo 2',sans-serif;font-weight:700;font-size:27px">When should the story stop?</div>
+      <div style="margin-top:6px;font-size:15px;color:rgba(244,241,234,.55);line-height:1.5">The sound fades out slowly, so nobody wakes up.</div>
+      <div style="display:flex;flex-direction:column;gap:12px;margin-top:24px">
+        <sc-for list="{{ timerOptions }}" as="o" hint-placeholder-count="4">
+          <div onClick="{{ o.pick }}" style="display:flex;align-items:center;justify-content:space-between;min-height:62px;padding:0 22px;border-radius:20px;cursor:pointer;font-size:18px;font-weight:600;background:{{ o.bg }};color:{{ o.fg }}">{{ o.label }}<span style="font-size:15px;font-weight:400;color:{{ o.noteColor }}">{{ o.note }}</span></div>
+        </sc-for>
+      </div>
+      <div onClick="{{ closeSheet }}" style="margin-top:22px;min-height:60px;border-radius:30px;background:rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:600;cursor:pointer">Keep listening</div>
+    </div>
+
+    <div style="position:absolute;inset:0;background:#03040E;opacity:{{ asleepO }};pointer-events:{{ asleepPE }};transition:opacity 1.2s ease;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px" onClick="{{ wake }}">
+      <div style="font-family:'Baloo 2',sans-serif;font-weight:700;font-size:30px;color:rgba(246,242,234,.85)">Sleep tight</div>
+      <div style="font-size:15px;color:rgba(246,242,234,.45)">Tap anywhere to keep listening</div>
+    </div>
+  </div>
+
+  <div style="position:absolute;inset:0;z-index:20;transform:{{ parentT }};transition:transform .42s cubic-bezier(.32,.72,0,1);background:#F3F1EC;color:#1A1730;overflow-y:auto">
+    <div style="padding:70px 24px 60px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="font-family:'Baloo 2',sans-serif;font-weight:700;font-size:32px">Parent controls</div>
+        <div onClick="{{ closeParent }}" style="min-width:44px;height:44px;padding:0 14px;border-radius:22px;background:rgba(0,0,0,.07);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;cursor:pointer">Done</div>
+      </div>
+      <div style="margin-top:6px;font-size:15px;color:rgba(26,23,48,.55);line-height:1.5">{{ childName }} can't reach this screen — it opens by holding the moon for three seconds.</div>
+
+      <div style="margin-top:26px;background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.07)">
+        <div style="display:flex;align-items:center;justify-content:space-between;min-height:58px;padding:0 18px;border-bottom:1px solid rgba(0,0,0,.06);font-size:16px">Bedtime<span style="color:rgba(26,23,48,.45)">7:30 PM</span></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;min-height:58px;padding:0 18px;border-bottom:1px solid rgba(0,0,0,.06);font-size:16px">Stories per night<span style="color:rgba(26,23,48,.45)">2</span></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;min-height:58px;padding:0 18px;border-bottom:1px solid rgba(0,0,0,.06);font-size:16px">Default sleep timer<span style="color:rgba(26,23,48,.45)">{{ sleepSetting }}</span></div>
+        <div onClick="{{ openAdd }}" style="display:flex;align-items:center;justify-content:space-between;min-height:58px;padding:0 18px;font-size:16px;cursor:pointer">Add stories from this device<span style="color:rgba(26,23,48,.45)">{{ addedCount }}</span></div>
+      </div>
+
+      <div style="margin-top:22px;font:600 11px/1 ui-monospace,Menlo,monospace;letter-spacing:.1em;text-transform:uppercase;color:rgba(26,23,48,.42);margin-bottom:10px">Safety</div>
+      <div style="background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.07)">
+        <sc-for list="{{ toggles }}" as="t" hint-placeholder-count="3">
+          <div onClick="{{ t.flip }}" style="display:flex;align-items:center;justify-content:space-between;min-height:58px;padding:0 18px;border-bottom:1px solid rgba(0,0,0,.06);font-size:16px;cursor:pointer">{{ t.label }}
+            <div style="width:51px;height:31px;border-radius:99px;position:relative;transition:background .2s ease;background:{{ t.track }}">
+              <div style="position:absolute;top:2px;left:{{ t.knob }};width:27px;height:27px;border-radius:50%;background:#fff;transition:left .2s ease;box-shadow:0 1px 2px rgba(0,0,0,.2)"></div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="margin-top:22px;font:600 11px/1 ui-monospace,Menlo,monospace;letter-spacing:.1em;text-transform:uppercase;color:rgba(26,23,48,.42);margin-bottom:10px">This week</div>
+      <div style="background:#fff;border-radius:20px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,.07)">
+        <div style="font-family:'Baloo 2',sans-serif;font-weight:700;font-size:26px">2 h 14 m listened</div>
+        <div style="margin-top:4px;font-size:14px;color:rgba(26,23,48,.5)">Asleep before the timer on 5 of 7 nights</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="position:absolute;inset:0;z-index:30;transform:{{ addT }};transition:transform .42s cubic-bezier(.32,.72,0,1);background:#F3F1EC;color:#1A1730;overflow-y:auto">
+    <div style="padding:70px 24px 60px">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="font-family:'Baloo 2',sans-serif;font-weight:700;font-size:32px">Add stories</div>
+        <div onClick="{{ closeAdd }}" style="min-width:44px;height:44px;padding:0 15px;border-radius:22px;background:rgba(0,0,0,.07);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;cursor:pointer">Done</div>
+      </div>
+      <div style="margin-top:6px;font-size:15px;color:rgba(26,23,48,.55);line-height:1.5">Bring in audio you already own. Files stay on this phone.</div>
+
+      <label style="margin-top:22px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;border-radius:24px;border:2px dashed rgba(91,79,199,.4);background:rgba(91,79,199,.06);padding:30px 22px;cursor:pointer">
+        <div style="width:56px;height:56px;border-radius:50%;background:#5B4FC7;display:flex;align-items:center;justify-content:center;margin-bottom:6px">
+          <div style="width:0;height:0;border-bottom:13px solid #fff;border-left:9px solid transparent;border-right:9px solid transparent"></div>
+        </div>
+        <div style="font-family:'Baloo 2',sans-serif;font-weight:700;font-size:21px">Choose audio files</div>
+        <div style="font-size:14px;color:rgba(26,23,48,.55);line-height:1.5">MP3, M4A or M4B · up to 2 GB each</div>
+        <input type="file" accept="audio/*" multiple="{{ true }}" onChange="{{ onFiles }}" style="display:none">
+      </label>
+
+      <div style="margin-top:26px;display:{{ dImports }};flex-direction:column">
+        <div style="font:600 11px/1 ui-monospace,Menlo,monospace;letter-spacing:.1em;text-transform:uppercase;color:rgba(26,23,48,.42);margin-bottom:10px">{{ importLabel }}</div>
+        <div style="background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.07)">
+          <sc-for list="{{ imports }}" as="f" hint-placeholder-count="2">
+            <div style="display:flex;gap:13px;align-items:center;padding:14px 16px;border-bottom:1px solid rgba(0,0,0,.06)">
+              <label style="width:46px;height:46px;border-radius:12px;flex:none;cursor:pointer;position:relative;overflow:hidden;display:flex;align-items:flex-end;justify-content:center;background:{{ f.cover }}">
+                <div style="width:100%;padding:2px 0 3px;text-align:center;font:600 8px ui-monospace,Menlo,monospace;letter-spacing:.04em;color:#fff;background:rgba(26,23,48,.55)">{{ f.coverLabel }}</div>
+                <input type="file" accept="image/*" onChange="{{ f.onCover }}" style="display:none">
+              </label>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:15px;font-weight:600">{{ f.name }}</div>
+                <div style="margin-top:6px;height:5px;border-radius:99px;background:rgba(0,0,0,.1)"><div style="height:100%;border-radius:99px;width:{{ f.pct }};background:{{ f.bar }};transition:width .3s linear"></div></div>
+              </div>
+              <div style="font-size:13px;font-weight:600;color:{{ f.statusColor }}">{{ f.status }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="margin-top:16px;display:{{ dImports }};align-items:center;justify-content:space-between;background:#fff;border-radius:20px;padding:16px 18px;box-shadow:0 1px 3px rgba(0,0,0,.07)">
+        <div><div style="font-size:16px;font-weight:600">Show in {{ childName }}'s library</div><div style="margin-top:3px;font-size:13px;color:rgba(26,23,48,.5)">Filed under “Ours”</div></div>
+        <div onClick="{{ flipShowOurs }}" style="width:51px;height:31px;border-radius:99px;position:relative;flex:none;cursor:pointer;transition:background .2s ease;background:{{ oursTrack }}"><div style="position:absolute;top:2px;left:{{ oursKnob }};width:27px;height:27px;border-radius:50%;background:#fff;transition:left .2s ease;box-shadow:0 1px 2px rgba(0,0,0,.2)"></div></div>
+      </div>
+
+      <div style="margin-top:26px;display:{{ dEmpty }};flex-direction:column;gap:6px;text-align:center;padding:0 20px">
+        <div style="font-size:15px;color:rgba(26,23,48,.5);line-height:1.6">Nothing imported yet. Anything you add appears in the library under “Ours”, alongside the downloaded stories.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</x-import>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:402,&quot;height&quot;:874},&quot;childName&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;Oliver&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;sleepMinutes&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:20,&quot;min&quot;:5,&quot;max&quot;:45,&quot;step&quot;:5,&quot;unit&quot;:&quot;min&quot;,&quot;tsType&quot;:&quot;number&quot;}}">
+const STORIES = [
+  { id: 'cat', title: 'The Lighthouse Cat', narrator: 'Ida', chapters: 4, mood: 'Brave', len: 1080, cover: 'repeating-linear-gradient(135deg,#2A2F5E 0 7px,#232850 7px 14px)' },
+  { id: 'fox', title: 'Seven Sleepy Foxes', narrator: 'Sam', chapters: 4, mood: 'Sleepy', len: 1080, cover: 'repeating-linear-gradient(135deg,#3B3050 0 7px,#332946 7px 14px)' },
+  { id: 'whale', title: 'Whalesong', narrator: 'Ida', chapters: 1, mood: 'Animals', len: 720, cover: 'repeating-linear-gradient(135deg,#2A4A4A 0 7px,#244040 7px 14px)' },
+  { id: 'button', title: 'The Button Kingdom', narrator: 'Ruth', chapters: 6, mood: 'Funny', len: 1200, cover: 'repeating-linear-gradient(135deg,#2C3C5A 0 7px,#26344E 7px 14px)' },
+  { id: 'boat', title: 'Mira and the Paper Boat', narrator: 'Ruth', chapters: 2, mood: 'Sleepy', len: 900, cover: 'repeating-linear-gradient(135deg,#33305C 0 7px,#2B2950 7px 14px)' },
+  { id: 'forest', title: 'The Boy Who Grew a Forest', narrator: 'Sam', chapters: 3, mood: 'Brave', len: 1140, cover: 'repeating-linear-gradient(135deg,#4A3A2E 0 7px,#403227 7px 14px)' }
+];
+const MOODS = ['All', 'Sleepy', 'Funny', 'Brave', 'Animals'];
+
+class Component extends DCLogic {
+  state = {
+    tab: 'home', player: false, sheet: false, parent: false, asleep: false,
+    playing: false, current: 'cat', mood: 'All', hold: 0,
+    pos: { cat: 496 }, favs: { cat: true },
+    sleepMin: 20, sleepLeft: 20 * 60,
+    add: false, imports: [], showOurs: true,
+    settings: { lock: true, dim: true, wifi: false }
+  };
+
+  componentDidMount() {
+    this.tick = setInterval(() => {
+      if (!this.state.playing) return;
+      this.setState(s => {
+        const st = this.allStories().find(x => x.id === s.current) || STORIES[0];
+        const pos = Math.min(st.len, (s.pos[s.current] || 0) + 1);
+        const left = Math.max(0, s.sleepLeft - 1);
+        return {
+          pos: Object.assign({}, s.pos, { [s.current]: pos }),
+          sleepLeft: left,
+          playing: left > 0 && pos < st.len,
+          asleep: left === 0 ? true : s.asleep
+        };
+      });
+    }, 1000);
+  }
+  componentWillUnmount() { clearInterval(this.tick); clearInterval(this.holdTimer); clearInterval(this.upTimer); }
+
+  fmt(sec) { return Math.floor(sec / 60) + ':' + String(Math.floor(sec % 60)).padStart(2, '0'); }
+
+  addFiles(files) {
+    const rows = files.map((f, i) => ({
+      id: 'up' + Date.now() + i,
+      name: f.name,
+      len: Math.max(300, Math.round((f.size || 6e6) / 16000)),
+      p: 0
+    }));
+    if (!rows.length) return;
+    this.setState(s => ({ imports: s.imports.concat(rows) }));
+    clearInterval(this.upTimer);
+    this.upTimer = setInterval(() => this.setState(s => {
+      let busy = false;
+      const imports = s.imports.map(r => {
+        if (r.p >= 1) return r;
+        busy = true;
+        return Object.assign({}, r, { p: Math.min(1, r.p + 0.07 + Math.random() * 0.05) });
+      });
+      if (!busy) clearInterval(this.upTimer);
+      return { imports };
+    }), 220);
+  }
+
+  allStories() {
+    const own = this.state.imports.filter(r => r.p >= 1).map(r => ({
+      id: r.id,
+      title: r.name.replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' '),
+      narrator: 'you', chapters: 1, mood: 'Ours', len: r.len,
+      cover: r.art ? 'center/cover no-repeat url("' + r.art + '")' : 'repeating-linear-gradient(135deg,#3C3566 0 7px,#342E5C 7px 14px)'
+    }));
+    return this.state.showOurs ? STORIES.concat(own) : STORIES;
+  }
+  open(id) {
+    this.setState({ current: id, player: true, playing: true, asleep: false,
+      sleepLeft: (this.props.sleepMinutes ?? this.state.sleepMin) * 60 });
+  }
+
+  renderVals() {
+    const s = this.state, all = this.allStories();
+    const cur = all.find(x => x.id === s.current) || all[0];
+    const pos = s.pos[s.current] || 0, pct = pos / cur.len;
+    const dim = s.settings.dim && s.playing ? Math.min(0.5, pct * 0.8) : 0;
+    const row = st => ({
+      title: st.title, cover: st.cover, mins: Math.round(st.len / 60) + ' min',
+      meta: st.chapters + (st.chapters > 1 ? ' chapters' : ' chapter') + ' · read by ' + st.narrator,
+      favColor: s.favs[st.id] ? '#F2839B' : 'rgba(244,241,234,.35)',
+      open: () => this.open(st.id),
+      fav: () => this.setState(p => ({ favs: Object.assign({}, p.favs, { [st.id]: !p.favs[st.id] }) }))
+    });
+    const savedList = all.filter(x => s.favs[x.id]).map(row);
+    const done = s.imports.filter(r => r.p >= 1).length;
+    const moodNames = MOODS.concat(done ? ['Ours'] : []);
+
+    return {
+      childName: this.props.childName ?? 'Ellis',
+      dHome: s.tab === 'home' ? 'flex' : 'none',
+      dSaved: s.tab === 'saved' ? 'flex' : 'none',
+      cHome: s.tab === 'home' ? '#F2C97C' : 'rgba(244,241,234,.5)',
+      cSaved: s.tab === 'saved' ? '#F2C97C' : 'rgba(244,241,234,.5)',
+      goHome: () => this.setState({ tab: 'home' }),
+      goSaved: () => this.setState({ tab: 'saved' }),
+      goLibFromPlayer: () => this.setState({ tab: 'home', player: false }),
+
+      homeSub: pct > 0.05 ? 'One story left before lights out' : 'Pick something for tonight',
+      picks: STORIES.filter(x => x.id !== s.current).slice(0, 4).map(row),
+      libraryList: all.filter(x => s.mood === 'All' || x.mood === s.mood).map(row),
+      savedList,
+      savedSub: savedList.length ? savedList.length + (savedList.length === 1 ? ' story' : ' stories') + ' kept for later' : 'Tap a heart to keep a story here',
+      moods: moodNames.map(m => ({
+        name: m, pick: () => this.setState({ mood: m }),
+        bg: s.mood === m ? '#F2C97C' : 'rgba(255,255,255,.08)',
+        fg: s.mood === m ? '#20142E' : '#F4F1EA',
+        weight: s.mood === m ? 600 : 400
+      })),
+
+      currentTitle: cur.title,
+      currentCover: cur.cover,
+      currentMeta: 'Chapter ' + Math.min(cur.chapters, Math.floor(pct * cur.chapters) + 1) + ' · read by ' + cur.narrator,
+      currentPct: (pct * 100).toFixed(1) + '%',
+      progA: (pct * 100).toFixed(1) + '%',
+      elapsed: this.fmt(pos),
+      remaining: '-' + this.fmt(cur.len - pos),
+      skyDim: dim,
+      playLabel: s.playing ? 'Pause' : 'Play',
+      togglePlay: () => this.setState(p => ({ playing: !p.playing, asleep: false })),
+      favColor: s.favs[s.current] ? '#F2839B' : 'rgba(255,255,255,.45)',
+      toggleFav: () => this.setState(p => ({ favs: Object.assign({}, p.favs, { [p.current]: !p.favs[p.current] }) })),
+      openCurrent: () => this.open(s.current),
+      closePlayer: () => this.setState({ player: false }),
+      playerT: s.player ? 'translateY(0)' : 'translateY(100%)',
+
+      sleepLabel: s.sleepLeft > 0 ? 'Sleep timer · ' + Math.ceil(s.sleepLeft / 60) + ' min left' : 'Sleep timer finished',
+      sleepSetting: (this.props.sleepMinutes ?? s.sleepMin) + ' min',
+      openSheet: () => this.setState({ sheet: true }),
+      closeSheet: () => this.setState({ sheet: false }),
+      sheetT: s.sheet ? 'translateY(0)' : 'translateY(102%)',
+      sheetO: s.sheet ? 1 : 0,
+      sheetPE: s.sheet ? 'auto' : 'none',
+      timerOptions: [
+        { m: 10, label: '10 minutes', note: 'a short one' },
+        { m: 20, label: '20 minutes', note: '' },
+        { m: 30, label: '30 minutes', note: 'a long one' },
+        { m: Math.ceil((cur.len - pos) / 60), label: 'End of the chapter', note: Math.ceil((cur.len - pos) / 60) + ' min' }
+      ].map(o => {
+        const on = s.sleepMin === o.m;
+        return {
+          label: o.label, note: on ? '✓' : o.note,
+          bg: on ? '#F2C97C' : 'rgba(255,255,255,.06)',
+          fg: on ? '#20142E' : '#F4F1EA',
+          noteColor: on ? '#20142E' : 'rgba(244,241,234,.4)',
+          pick: () => this.setState({ sleepMin: o.m, sleepLeft: o.m * 60, sheet: false, asleep: false, playing: true })
+        };
+      }),
+
+      asleepO: s.asleep ? 1 : 0,
+      asleepPE: s.asleep ? 'auto' : 'none',
+      wake: () => this.setState({ asleep: false, playing: true, sleepLeft: s.sleepMin * 60 }),
+
+      holdPct: (s.hold * 100) + '%',
+      holdStart: () => {
+        clearInterval(this.holdTimer);
+        this.holdTimer = setInterval(() => this.setState(p => {
+          const h = p.hold + 0.034;
+          if (h >= 1) { clearInterval(this.holdTimer); return { hold: 0, parent: true }; }
+          return { hold: h };
+        }), 100);
+      },
+      holdEnd: () => { clearInterval(this.holdTimer); this.setState({ hold: 0 }); },
+      parentT: s.parent ? 'translateY(0)' : 'translateY(100%)',
+      openAdd: () => this.setState({ add: true }),
+      closeAdd: () => this.setState({ add: false }),
+      addT: s.add ? 'translateY(0)' : 'translateY(100%)',
+      addedCount: done ? done + (done === 1 ? ' file' : ' files') : 'None yet',
+      dImports: s.imports.length ? 'flex' : 'none',
+      dEmpty: s.imports.length ? 'none' : 'flex',
+      importLabel: s.imports.length === done ? 'Imported · ' + done : 'Importing · ' + done + ' of ' + s.imports.length,
+      imports: s.imports.map(r => ({
+        name: r.name,
+        cover: r.art ? 'center/cover no-repeat url("' + r.art + '")' : 'repeating-linear-gradient(135deg,#DCD8EE 0 6px,#D3CEE9 6px 12px)',
+        coverLabel: r.art ? 'EDIT' : 'ART',
+        onCover: e => {
+          const file = (e.target.files || [])[0];
+          if (!file) return;
+          const url = URL.createObjectURL(file);
+          this.setState(p => ({ imports: p.imports.map(x => x.id === r.id ? Object.assign({}, x, { art: url }) : x) }));
+          e.target.value = '';
+        },
+        pct: (r.p * 100).toFixed(0) + '%',
+        bar: r.p >= 1 ? '#4CA07A' : '#5B4FC7',
+        status: r.p >= 1 ? 'Ready' : (r.p * 100).toFixed(0) + '%',
+        statusColor: r.p >= 1 ? '#4CA07A' : 'rgba(26,23,48,.45)'
+      })),
+      onFiles: e => {
+        this.addFiles(Array.from(e.target.files || []));
+        e.target.value = '';
+      },
+      flipShowOurs: () => this.setState(p => ({ showOurs: !p.showOurs })),
+      oursTrack: s.showOurs ? '#5B4FC7' : 'rgba(0,0,0,.14)',
+      oursKnob: s.showOurs ? '22px' : '2px',
+      closeParent: () => this.setState({ parent: false }),
+      toggles: [
+        { k: 'lock', label: 'Lock to the library' },
+        { k: 'dim', label: 'Screen dims while playing' },
+        { k: 'wifi', label: 'Downloads over Wi-Fi only' }
+      ].map(t => ({
+        label: t.label,
+        track: s.settings[t.k] ? '#5B4FC7' : 'rgba(0,0,0,.14)',
+        knob: s.settings[t.k] ? '22px' : '2px',
+        flip: () => this.setState(p => ({ settings: Object.assign({}, p.settings, { [t.k]: !p.settings[t.k] }) }))
+      }))
+    };
+  }
+}
+</script>
+</body>
+</html>

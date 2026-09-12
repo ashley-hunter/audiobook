@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bedtime</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="description" content="A bedtime audiobook player for children. Stories stay on this phone.">
+<meta name="theme-color" content="#0A0F2A">
+
+<!-- Home Screen web app (iOS 12 and up uses the apple-* meta tags, not the manifest) -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Bedtime">
+<meta name="format-detection" content="telephone=no">
+<link rel="apple-touch-icon" href="assets/icons/icon-180.png">
+<link rel="apple-touch-icon" sizes="120x120" href="assets/icons/icon-120.png">
+<link rel="apple-touch-icon" sizes="152x152" href="assets/icons/icon-152.png">
+<link rel="apple-touch-icon" sizes="167x167" href="assets/icons/icon-167.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/icons/icon-192.png">
+<link rel="stylesheet" href="assets/css/app.css">
+</head>
+<body>
+
+<div class="app" id="app">
+
+  <!-- ───────────────────────── library (Tonight / Saved) ───────────────────────── -->
+  <div class="library" id="library">
+
+    <section class="screen" id="screen-home">
+      <header class="head">
+        <div class="head-text">
+          <h1 class="display display-xl">Good night, <span id="home-name">you</span></h1>
+          <p class="sub" id="home-sub">Pick something for tonight</p>
+        </div>
+        <button class="moon-btn" id="moon-btn" type="button" aria-label="Parent controls, hold for three seconds">
+          <svg class="moon-ring" viewBox="0 0 52 52" aria-hidden="true" focusable="false">
+            <circle class="moon-ring-track" cx="26" cy="26" r="24.5"></circle>
+            <circle class="moon-ring-fill" id="hold-ring" cx="26" cy="26" r="24.5"></circle>
+          </svg>
+          <span class="moon-face">&#9790;</span>
+        </button>
+      </header>
+
+      <button class="keepgoing" id="keepgoing" type="button" hidden>
+        <span class="cover cover-sm" id="kg-cover"></span>
+        <span class="keepgoing-text">
+          <span class="eyebrow">Keep going</span>
+          <span class="display display-md" id="kg-title">&nbsp;</span>
+          <span class="bar"><span class="bar-fill" id="kg-bar"></span></span>
+        </span>
+        <span class="play-badge" aria-hidden="true"><span class="tri"></span></span>
+      </button>
+
+      <section class="block" id="picks-block" hidden>
+        <h2 class="display display-sm">Tonight&rsquo;s picks</h2>
+        <div class="picks" id="picks"></div>
+      </section>
+
+      <div class="block block-row">
+        <h2 class="display display-sm">All stories</h2>
+        <button class="chip-add" id="add-btn" type="button"><span class="plus">+</span>Add</button>
+      </div>
+
+      <div class="moods" id="moods"></div>
+      <div class="rows" id="library-rows"></div>
+
+      <div class="empty" id="library-empty">
+        <p class="empty-title display display-sm">No stories yet</p>
+        <p>Tap <strong>Add</strong> to bring in audio you already own. Files are copied into this app and stay on this phone.</p>
+      </div>
+    </section>
+
+    <section class="screen" id="screen-saved" hidden>
+      <header class="head">
+        <div class="head-text">
+          <h1 class="display display-xl">Saved stories</h1>
+          <p class="sub" id="saved-sub">Tap a heart to keep a story here</p>
+        </div>
+        <button class="chip-add chip-add-lg" id="add-btn-saved" type="button"><span class="plus">+</span>Add</button>
+      </header>
+      <div class="rows" id="saved-rows"></div>
+    </section>
+
+  </div>
+
+  <nav class="tabbar" id="tabbar">
+    <button class="tab is-on" id="tab-home" type="button"><span class="tab-icon">&#9790;</span>Tonight</button>
+    <button class="tab" id="tab-saved" type="button"><span class="tab-icon">&#9829;</span>Saved</button>
+  </nav>
+
+  <!-- ───────────────────────── player ───────────────────────── -->
+  <div class="player" id="player" aria-hidden="true">
+    <div class="sky-dim" id="sky-dim"></div>
+    <div class="stars" aria-hidden="true"></div>
+    <div class="moon" aria-hidden="true"></div>
+
+    <div class="player-inner">
+      <div class="player-top">
+        <button class="round round-sm" id="player-close" type="button" aria-label="Close player">&#8964;</button>
+        <span class="eyebrow eyebrow-dim">Tonight&rsquo;s story</span>
+        <button class="round round-sm heart" id="player-fav" type="button" aria-label="Save this story">&#9829;</button>
+      </div>
+
+      <div class="player-mid">
+        <div class="disc" id="disc">
+          <svg class="disc-ring" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+            <circle class="disc-track" cx="50" cy="50" r="48.2"></circle>
+            <circle class="disc-fill" id="disc-fill" cx="50" cy="50" r="48.2"></circle>
+          </svg>
+          <span class="cover disc-cover" id="disc-cover"></span>
+        </div>
+        <div class="player-title">
+          <h2 class="display display-lg" id="player-title">&nbsp;</h2>
+          <p class="sub" id="player-meta">&nbsp;</p>
+        </div>
+      </div>
+
+      <div class="scrub">
+        <span class="mono" id="elapsed">0:00</span>
+        <span class="mono" id="remaining">-0:00</span>
+      </div>
+
+      <div class="controls">
+        <button class="round" id="open-sheet" type="button" aria-label="Sleep timer">&#9790;</button>
+        <button class="playbtn" id="playbtn" type="button"><span id="play-label">Play</span></button>
+        <button class="round" id="to-library" type="button" aria-label="Back to library">&#9776;</button>
+      </div>
+      <p class="sleep-label" id="sleep-label">&nbsp;</p>
+    </div>
+
+    <div class="scrim" id="sheet-scrim"></div>
+    <div class="sheet" id="sheet">
+      <div class="grabber"></div>
+      <h2 class="display display-lg">When should the story stop?</h2>
+      <p class="sub sub-loose">The sound fades out slowly, so nobody wakes up.</p>
+      <div class="timer-options" id="timer-options"></div>
+      <button class="wide-btn" id="sheet-close" type="button">Keep listening</button>
+    </div>
+
+    <div class="asleep" id="asleep">
+      <p class="display display-lg asleep-title">Sleep tight</p>
+      <p class="asleep-sub">Tap anywhere to keep listening</p>
+    </div>
+  </div>
+
+  <!-- ───────────────────────── parent controls ───────────────────────── -->
+  <div class="paper" id="parent" aria-hidden="true">
+    <div class="paper-inner">
+      <div class="paper-head">
+        <h1 class="display display-xl">Parent controls</h1>
+        <button class="done" id="parent-close" type="button">Done</button>
+      </div>
+      <p class="paper-sub"><span id="parent-name">Your child</span> can&rsquo;t reach this screen - it opens by holding the moon for three seconds.</p>
+
+      <div class="card">
+        <label class="card-row">Bedtime
+          <input class="field" type="time" id="set-bedtime" value="19:30">
+        </label>
+        <label class="card-row">Stories per night
+          <select class="field" id="set-per-night">
+            <option value="1">1</option><option value="2">2</option>
+            <option value="3">3</option><option value="4">4</option>
+            <option value="0">No limit</option>
+          </select>
+        </label>
+        <label class="card-row">Default sleep timer
+          <select class="field" id="set-sleep">
+            <option value="10">10 min</option><option value="20">20 min</option>
+            <option value="30">30 min</option><option value="45">45 min</option>
+          </select>
+        </label>
+        <label class="card-row">Child&rsquo;s name
+          <input class="field field-text" type="text" id="set-name" placeholder="Ellis" maxlength="18">
+        </label>
+        <button class="card-row card-row-btn" id="parent-add" type="button">Add stories from this device
+          <span class="muted" id="added-count">None yet</span>
+        </button>
+      </div>
+
+      <p class="section-label">Safety</p>
+      <div class="card" id="toggles"></div>
+
+      <p class="section-label">Storage on this phone</p>
+      <div class="card card-pad">
+        <p class="display display-md" id="storage-used">0 MB stored</p>
+        <p class="muted muted-sm" id="storage-note">Stories are copied into this app, so they play with no signal.</p>
+      </div>
+      <div class="card" id="stored-list" hidden></div>
+
+      <p class="section-label">This week</p>
+      <div class="card card-pad">
+        <p class="display display-md" id="week-listened">0 m listened</p>
+        <p class="muted muted-sm" id="week-nights">No nights recorded yet</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────────────────────── add stories ───────────────────────── -->
+  <div class="paper" id="add" aria-hidden="true">
+    <div class="paper-inner">
+      <div class="paper-head">
+        <h1 class="display display-xl">Add stories</h1>
+        <button class="done" id="add-close" type="button">Done</button>
+      </div>
+      <p class="paper-sub">Bring in audio you already own. Files stay on this phone.</p>
+
+      <label class="dropzone" id="dropzone">
+        <span class="dz-icon" aria-hidden="true"><span class="tri-up"></span></span>
+        <span class="display display-md">Choose audio files</span>
+        <span class="dz-note" id="dz-note">MP3, M4A or M4B</span>
+        <input type="file" id="file-input" accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/aac,audio/wav,audio/flac,.mp3,.m4a,.m4b,.aac,.wav,.flac" multiple>
+      </label>
+
+      <div class="block" id="imports-block" hidden>
+        <p class="section-label" id="import-label">Importing</p>
+        <div class="card" id="imports"></div>
+      </div>
+
+      <div class="card card-split" id="ours-block" hidden>
+        <div>
+          <p class="card-title">Show in <span id="ours-name">the</span> library</p>
+          <p class="muted muted-sm">Filed under &ldquo;Ours&rdquo;</p>
+        </div>
+        <button class="switch" id="ours-switch" type="button" role="switch" aria-checked="true"><span class="knob"></span></button>
+      </div>
+
+      <p class="dz-empty" id="add-empty">Nothing imported yet. Anything you add appears in the library under &ldquo;Ours&rdquo;.</p>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</div>
+
+<audio id="audio" preload="metadata" playsinline webkit-playsinline></audio>
+
+<script src="assets/js/store.js"></script>
+<script src="assets/js/settings.js"></script>
+<script src="assets/js/id3.js"></script>
+<script src="assets/js/media.js"></script>
+<script src="assets/js/importer.js"></script>
+<script src="assets/js/player.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>
