@@ -68,7 +68,28 @@ window.App = window.App || {};
 
   function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return;
-    navigator.serviceWorker.register('sw.js')['catch'](function () { return null; });
+
+    // updateViaCache is ignored before Safari 14, so update() is what actually
+    // forces a check for a new worker rather than reusing an HTTP cached one.
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
+      .then(function (reg) {
+        if (reg && reg.update) reg.update();
+      })['catch'](function () { return null; });
+
+    /* A deploy ships a worker with a new build id, which claims this page the
+     * moment it activates. The HTML and scripts already running are still the
+     * previous release, so reload to pick up the new ones - but never while a
+     * story is playing. An update is not worth cutting off a bedtime story;
+     * it will be there at the next launch.
+     */
+    var hadController = !!navigator.serviceWorker.controller;
+    var reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (!hadController || reloading) return;   // first run has nothing to replace
+      if (App.player.playing()) return;
+      reloading = true;
+      window.location.reload();
+    });
   }
 
   /* Asks for protected storage and reads the real free space, where the

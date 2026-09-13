@@ -15,6 +15,7 @@
  */
 'use strict';
 
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
@@ -38,6 +39,31 @@ function copy(from, to) {
   }
   fs.mkdirSync(path.dirname(to), { recursive: true });
   fs.copyFileSync(from, to);
+}
+
+/* Gives the service worker a version that changes whenever anything it serves
+ * changes. A fixed version means the browser sees identical worker bytes after
+ * a deploy, skips the install, never reaches activate, and goes on serving the
+ * previous release from cache until a second load happens to refresh it.
+ */
+function stampBuildId() {
+  const hash = crypto.createHash('sha256');
+  for (const rel of shipped.slice().sort()) {
+    if (rel === 'sw.js') continue;          // the hash is going into this file
+    hash.update(rel);
+    hash.update(fs.readFileSync(path.join(OUT, rel)));
+  }
+  const id = hash.digest('hex').slice(0, 12);
+
+  const swPath = path.join(OUT, 'sw.js');
+  const before = fs.readFileSync(swPath, 'utf8');
+  const after = before.replace("var BUILD = 'dev';", `var BUILD = '${id}';`);
+  if (after === before) {
+    console.error('Could not stamp the build id into sw.js - the BUILD line has moved.');
+    process.exit(1);
+  }
+  fs.writeFileSync(swPath, after);
+  return id;
 }
 
 function listFiles(dir, base, out) {
@@ -68,6 +94,7 @@ for (const entry of INCLUDE) {
 fs.writeFileSync(path.join(OUT, '.nojekyll'), '');
 
 const shipped = listFiles(OUT, OUT, []);
+stampBuildId();
 
 /* ---------------------------------------------------------------- verify */
 

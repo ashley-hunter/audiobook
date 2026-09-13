@@ -73,6 +73,16 @@ position. You should not be able to notice the switch.
 `pagehide` / `visibilitychange`, because iOS tears down a backgrounded Home
 Screen app without warning and reopening it is a cold start, not a resume.
 
+**Shipping an update** (`scripts/build-site.js`, `sw.js`)
+The service worker serves the app shell from cache, so a deploy only reaches a
+phone if the browser installs a new worker. `build-site.js` stamps `sw.js` with
+a hash of everything that ships, which means the worker bytes change whenever
+the app does and stay identical when it does not. The new worker claims the page
+on activate, and the page reloads once to pick up the new HTML and scripts -
+unless a story is playing, in which case the update waits for the next launch.
+Without the stamp the worker never changes, `activate` never runs, and the old
+release keeps being served.
+
 ---
 
 ## What a newer phone gets, and what the iPhone 6 does instead

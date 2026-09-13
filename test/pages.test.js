@@ -29,6 +29,7 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'bedtime-pages-'));
 const SITE = path.join(TMP, 'site');
 const FIXTURE = path.join(TMP, 'Whalesong.wav');
 const FIXTURE_BYTES = writeWav(FIXTURE, 12);
+const BUILD_SCRIPT = path.join(__dirname, '..', 'scripts', 'build-site.js');
 
 const log = [];
 let failed = 0;
@@ -64,10 +65,42 @@ function writeWav(file, seconds) {
 
 (async () => {
   // Build the real artifact, the same way the workflow does.
-  execFileSync(process.execPath, [path.join(__dirname, '..', 'scripts', 'build-site.js'), SITE], {
-    stdio: 'inherit',
-  });
+  execFileSync(process.execPath, [BUILD_SCRIPT, SITE], { stdio: 'inherit' });
   check('build produced an index', fs.existsSync(path.join(SITE, 'index.html')));
+
+  /* A fixed service worker version means the browser sees identical bytes after
+   * a deploy, skips the install, never reaches activate, and keeps serving the
+   * previous release from cache. The stamped build id is what makes an update
+   * actually reach a phone. */
+  const readBuildId = (dir) =>
+    (/var BUILD = '([^']+)'/.exec(fs.readFileSync(path.join(dir, 'sw.js'), 'utf8')) || [])[1];
+
+  const buildId = readBuildId(SITE);
+  check('the service worker carries a stamped build id',
+    !!buildId && buildId !== 'dev' && buildId.length >= 8, buildId);
+
+  // Same input, same id - a no-op deploy must not churn every phone's cache.
+  const repeat = path.join(TMP, 'site-again');
+  execFileSync(process.execPath, [BUILD_SCRIPT, repeat], { stdio: 'ignore' });
+  check('an unchanged build keeps the same id', readBuildId(repeat) === buildId,
+    `${buildId} vs ${readBuildId(repeat)}`);
+
+  // Changed input, changed id - otherwise the update never reaches anyone.
+  // The source file is put back whatever happens, including on a failure here.
+  const css = path.join(__dirname, '..', 'assets', 'css', 'app.css');
+  const original = fs.readFileSync(css);
+  let changedId;
+  try {
+    fs.writeFileSync(css, Buffer.concat([original, Buffer.from('\n/* build id probe */\n')]));
+    const changed = path.join(TMP, 'site-changed');
+    execFileSync(process.execPath, [BUILD_SCRIPT, changed], { stdio: 'ignore' });
+    changedId = readBuildId(changed);
+  } finally {
+    fs.writeFileSync(css, original);
+  }
+  check('a changed file changes the id', !!changedId && changedId !== buildId,
+    `${buildId} -> ${changedId}`);
+
   check('build left the tests behind', !fs.existsSync(path.join(SITE, 'test')));
   check('build left the design prototypes behind', !fs.existsSync(path.join(SITE, 'design')));
 

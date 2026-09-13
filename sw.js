@@ -11,7 +11,14 @@
  */
 'use strict';
 
-var VERSION = 'bedtime-v1';
+/* Stamped by scripts/build-site.js with a hash of everything that ships, so
+ * each deploy produces a different service worker. Without that the browser
+ * sees identical bytes, never installs a new worker, never runs activate, and
+ * the cache below keeps serving the previous release. Left as 'dev' when the
+ * repo is served straight from disk. */
+var BUILD = 'dev';
+
+var VERSION = 'bedtime-' + BUILD;
 var MEDIA_PREFIX = 'media/';
 var MAX_WINDOW = 4 * 1024 * 1024; // largest slice answered in one response
 
