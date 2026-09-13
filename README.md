@@ -5,6 +5,9 @@ A bedtime audiobook player for children, built from the Claude Design prototype
 web app, and the audio you add is copied into the app and played back from the
 phone, with no server and no signal needed.
 
+**Live at https://ashley-hunter.github.io/audiobook/** - open it in Safari on
+the phone, then Share → Add to Home Screen.
+
 Built to run on an **iPhone 6**, which means the floor is **Safari 12 / iOS 12.5.7**.
 Newer phones are not held down to that floor: anything that arrived later is
 used when it is there and has a stated fallback when it is not. Parent controls
@@ -244,13 +247,16 @@ and publishes to GitHub Pages from the default branch.
   than a hardcoded `main`, so it keeps working whatever the default branch is
   called now or later.
 
-### The one thing a workflow cannot do for itself
+### The one thing a workflow could not do for itself
 
-**Turn Pages on: Settings → Pages → Build and deployment → Source: GitHub
-Actions.** That is the only manual step, and it genuinely cannot be automated.
-`configure-pages` has an `enablement` option, which was tried and does not work
-here: creating a Pages site counts as administering repository settings, and the
-built-in `GITHUB_TOKEN` is refused whatever permissions the workflow requests.
+Pages is already on, so there is nothing left to do here. It is recorded because
+it is the step that will bite anyone forking this.
+
+**Settings → Pages → Build and deployment → Source: GitHub Actions** has to be
+clicked by a person. `configure-pages` has an `enablement` option, which was
+tried and does not work: creating a Pages site counts as administering
+repository settings, and the built-in `GITHUB_TOKEN` is refused whatever
+permissions the workflow requests.
 
 ```
 Create Pages site failed. Error: Resource not accessible by integration
@@ -260,21 +266,22 @@ So the deploy job prints what to click when it hits this, rather than leaving
 you with the raw "Pages site not found".
 
 **If that settings page says Pages is unavailable, it is the plan and not the
-setting.** Publishing a private repository needs GitHub Pro, Team or
-Enterprise; making the repository public is the other way through. Nothing
-sensitive is published either way - the site is the app shell, and every story a
-child adds stays in that phone's own storage and never reaches a server. Worth
-knowing that even on Pro the published site is reachable by anyone with the URL;
-only Enterprise can restrict who can load it.
+setting.** Publishing a private repository needs GitHub Pro, Team or Enterprise;
+making the repository public is the other way through, and is what this one did.
+Nothing sensitive is published either way - the site is the app shell, and every
+story a child adds stays in that phone's own storage and never reaches a server.
+Worth knowing that the published site is reachable by anyone with the URL; only
+Enterprise can restrict who can load it.
 
 The test job runs regardless, on every branch and every pull request.
 
 ### The URL
 
-A project site is served from a subdirectory,
-`https://<user>.github.io/<repo>/`, not the root of a domain. Every path in the
-app is relative for that reason, and `npm run test:pages` builds the real
-artifact, serves it from a subdirectory and checks that the service worker
+**https://ashley-hunter.github.io/audiobook/**
+
+A project site is served from a subdirectory, not the root of a domain. Every
+path in the app is relative for that reason, and `npm run test:pages` builds the
+real artifact, serves it from a subdirectory and checks that the service worker
 claims the right scope, that the media route resolves, and that the whole thing
 still plays with the network switched off.
 
@@ -291,9 +298,10 @@ The app has to be served over **HTTPS** - service workers require a secure
 context, and without one there is no offline shell and no streaming route.
 `localhost` counts as secure, so `npm run serve` is enough for development.
 
-On the phone: open the URL in **Safari** (not Chrome - only Safari can install to
-the Home Screen), then Share → Add to Home Screen. Launching from that icon is
-what gives the app its full screen and its own storage.
+On the phone: open https://ashley-hunter.github.io/audiobook/ in **Safari** (not
+Chrome - only Safari can install to the Home Screen), then Share → Add to Home
+Screen. Launching from that icon is what gives the app its full screen and its
+own storage.
 
 ---
 
