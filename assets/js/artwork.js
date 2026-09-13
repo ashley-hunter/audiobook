@@ -15,9 +15,10 @@
  *      the library looking broken on a phone with no signal, which is the one
  *      place this app is meant to work.
  *
- * Both hosts have to allow cross-origin reads for rule 3 to hold. If either
- * refuses, the fetch rejects, no cover is returned and the generated striped
- * cover stands - the same as being offline.
+ * Rule 3 needs the host to allow cross-origin reads. iTunes does, confirmed on
+ * a real device. Open Library is only reached when iTunes has nothing, so that
+ * leg is unproven; if it ever refuses, the fetch rejects, no cover is returned
+ * and the generated striped cover stands - the same as being offline.
  */
 window.App = window.App || {};
 

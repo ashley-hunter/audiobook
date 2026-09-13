@@ -71,10 +71,11 @@ same hopeless title is not searched on every launch, but only once a source has
 actually answered - otherwise a story imported with no signal would be written
 off as having no cover for good.
 
-One thing this repository cannot prove: both hosts have to allow cross-origin
-reads for the bytes to be storable. CI has no route to either, so the tests fake
-them. If either refuses in practice, the lookup degrades to the generated cover
-rather than breaking, and the first real import on a phone is what settles it.
+Storing the bytes needs the host to allow cross-origin reads. CI has no route to
+either host, so the tests fake them, but the iTunes path is confirmed working on
+a real device. Open Library is only reached when iTunes has nothing, so that leg
+is still unproven in practice; if it ever refuses, the lookup degrades to the
+generated cover rather than breaking.
 
 **Playing back** (`assets/js/media.js`, `sw.js`)
 Two routes, tried in order:
