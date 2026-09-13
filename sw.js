@@ -49,13 +49,17 @@ var SHELL = [
 ];
 
 self.addEventListener('install', function (event) {
+  /* addAll is all or nothing, and that is the point. Swallowing a failed entry
+   * would let a half cached shell install and take over, and activate would
+   * then delete the previous complete cache - leaving the app broken offline
+   * with nothing to fall back on. A failed install keeps the old worker and
+   * the old cache, which still work. Every SHELL path is verified to exist by
+   * scripts/build-site.js, so a failure here means the network, not a typo.
+   */
   event.waitUntil(
-    caches.open(VERSION).then(function (cache) {
-      // One failed entry should not sink the whole install.
-      return Promise.all(SHELL.map(function (path) {
-        return cache.add(path)['catch'](function () { return null; });
-      }));
-    }).then(function () { return self.skipWaiting(); })
+    caches.open(VERSION)
+      .then(function (cache) { return cache.addAll(SHELL); })
+      .then(function () { return self.skipWaiting(); })
   );
 });
 
@@ -95,7 +99,16 @@ self.addEventListener('fetch', function (event) {
         })['catch'](function () { return null; });
         return hit;
       }
-      return fetch(request)['catch'](function () {
+      // A miss that succeeds from the network is worth keeping, so a shell
+      // file that somehow escaped the install is repaired rather than fetched
+      // every time and missing the next time there is no signal.
+      return fetch(request).then(function (response) {
+        if (response && response.ok && isShell(path)) {
+          var copy = response.clone();
+          caches.open(VERSION).then(function (cache) { cache.put(request, copy); });
+        }
+        return response;
+      })['catch'](function () {
         return caches.match('index.html').then(function (fallback) {
           return fallback || new Response('Offline', { status: 503 });
         });
@@ -103,6 +116,10 @@ self.addEventListener('fetch', function (event) {
     })
   );
 });
+
+function isShell(path) {
+  return SHELL.indexOf(path) >= 0 || path === '' || path === 'index.html';
+}
 
 /* ------------------------------------------------------------ media route */
 

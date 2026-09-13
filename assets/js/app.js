@@ -24,6 +24,7 @@ window.App = window.App || {};
   var holdStart = 0;
   var persistedState = null;   // null until the browser has been asked
   var spaceEstimate = null;    // null on browsers that will not say
+  var importing = false;       // chunks are being written; do not reload
 
   /* ==================================================================== boot */
 
@@ -43,6 +44,7 @@ window.App = window.App || {};
         App.player.defaultSleepMinutes(App.settings.get().sleepMinutes);
         renderAll();
         App.caps.idle(verifyStorage, 3000);
+        App.caps.idle(reclaimOrphanChunks, 8000);
         refreshStorageFacts();
         wireInstallRow();
         wireTeardown();
@@ -71,25 +73,57 @@ window.App = window.App || {};
 
     // updateViaCache is ignored before Safari 14, so update() is what actually
     // forces a check for a new worker rather than reusing an HTTP cached one.
+    // Its rejection has to be returned, or an offline launch - the normal case
+    // for this app - raises an unhandled rejection on every boot.
     navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
       .then(function (reg) {
-        if (reg && reg.update) reg.update();
+        return reg && reg.update ? reg.update() : null;
       })['catch'](function () { return null; });
 
     /* A deploy ships a worker with a new build id, which claims this page the
      * moment it activates. The HTML and scripts already running are still the
-     * previous release, so reload to pick up the new ones - but never while a
-     * story is playing. An update is not worth cutting off a bedtime story;
-     * it will be there at the next launch.
+     * previous release, so reload to pick up the new ones.
      */
     var hadController = !!navigator.serviceWorker.controller;
-    var reloading = false;
     navigator.serviceWorker.addEventListener('controllerchange', function () {
-      if (!hadController || reloading) return;   // first run has nothing to replace
-      if (App.player.playing()) return;
-      reloading = true;
+      if (!hadController) return;          // first run has nothing to replace
+      if (!safeToReload()) return;
+      if (alreadyReloaded()) return;       // see below: this must survive a reload
+      markReloaded();
       window.location.reload();
     });
+  }
+
+  /* Reasons to leave a running app alone. An update is never worth interrupting
+   * a bedtime story, and a reload part way through an import would orphan the
+   * chunks already written, since the story row is only saved at the end.
+   */
+  function safeToReload() {
+    if (importing) return false;
+    return !App.player.currentStory();   // not just "not playing": a paused
+                                         // story is still someone's place in it
+  }
+
+  /* On Safari 12 updateViaCache is ignored, so an HTTP cached sw.js and a fresh
+   * one can alternate and each swap fires controllerchange. A flag that only
+   * lives for one page lifetime would let that loop forever, flipping between
+   * releases. This one survives the reload it causes.
+   */
+  var RELOAD_KEY = 'bedtime:swReloaded';
+
+  function alreadyReloaded() {
+    try {
+      return window.sessionStorage.getItem(RELOAD_KEY) === '1';
+    } catch (err) {
+      void err;
+      return true;   // no session storage, so no way to stop a loop: do not start one
+    }
+  }
+
+  function markReloaded() {
+    try {
+      window.sessionStorage.setItem(RELOAD_KEY, '1');
+    } catch (err) { void err; }
   }
 
   /* Asks for protected storage and reads the real free space, where the
@@ -172,6 +206,26 @@ window.App = window.App || {};
       })['catch'](step);
     }
     step();
+  }
+
+  /* Deletes chunks left behind by an import that never finished. Skipped while
+   * an import is running, because those chunks have no story row yet either.
+   */
+  function reclaimOrphanChunks() {
+    if (importing) return;
+    App.store.chunkOwners().then(function (owners) {
+      var known = {};
+      for (var i = 0; i < stories.length; i++) known[stories[i].id] = true;
+      var orphans = owners.filter(function (id) { return !known[id]; });
+      if (!orphans.length) return null;
+
+      function step() {
+        if (!orphans.length || importing) return null;
+        var id = orphans.shift();
+        return App.store.deleteChunks(id)['catch'](function () { return null; }).then(step);
+      }
+      return step();
+    })['catch'](function () { return null; });
   }
 
   /* ================================================================ render */
@@ -615,6 +669,7 @@ window.App = window.App || {};
     if (!files.length) return;
 
     var queue = files.slice();
+    importing = true;
     files.forEach(function (file) { addImportRow(file); });
     ui.show($('add-empty'), false);
     ui.show($('imports-block'), true);
@@ -622,6 +677,7 @@ window.App = window.App || {};
 
     function next() {
       if (!queue.length) {
+        importing = false;
         updateImportLabel();
         return Promise.resolve();
       }
@@ -889,6 +945,7 @@ window.App = window.App || {};
 
   // Used by test/browser.test.js.
   App.debug = {
-    stories: function () { return stories; }
+    stories: function () { return stories; },
+    reclaimOrphanChunks: reclaimOrphanChunks
   };
 })();

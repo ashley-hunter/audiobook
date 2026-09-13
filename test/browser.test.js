@@ -284,6 +284,22 @@ function writeWav(file, seconds) {
   check('removal empties the library', (await page.evaluate(() => App.debug.stories().length)) === 0);
   check('empty state returns', await page.locator('#library-empty').isVisible());
 
+  /* An import writes chunks before the story row, so anything that kills the
+   * app part way through leaves chunks nothing can reach or delete. */
+  const orphans = await page.evaluate(async () => {
+    await App.store.putChunk('ghost-story', 0, new ArrayBuffer(2048));
+    await App.store.putChunk('ghost-story', 1, new ArrayBuffer(2048));
+    const before = await App.store.chunkOwners();
+    await App.debug.reclaimOrphanChunks();
+    await new Promise((r) => setTimeout(r, 600));
+    const after = await App.store.chunkOwners();
+    return { before, after };
+  });
+  check('chunks from an unfinished import are found',
+    orphans.before.indexOf('ghost-story') >= 0, JSON.stringify(orphans.before));
+  check('and swept up rather than leaking storage',
+    orphans.after.indexOf('ghost-story') < 0, JSON.stringify(orphans.after));
+
   check('no JavaScript errors at any point', errors.length === 0, errors.join(' | '));
 
   /* ============================================================================

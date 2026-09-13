@@ -158,6 +158,32 @@ App.store = (function () {
     });
   }
 
+  /* Every story id that has chunks on disk. An import writes chunks before it
+   * writes the story row, so anything killed part way through - iOS reclaiming
+   * a backgrounded app, a crash, a reload - leaves chunks with no owner and no
+   * way to reach them. Nothing else walks the store, so without this they sit
+   * there taking up space for good.
+   */
+  function chunkOwners() {
+    return tx('chunks', 'readonly', function (store, set) {
+      var ids = {};
+      var request = store.openKeyCursor ? store.openKeyCursor() : store.openCursor();
+      request.onsuccess = function (event) {
+        var cursor = event.target.result;
+        if (!cursor) {
+          var out = [];
+          for (var id in ids) if (Object.prototype.hasOwnProperty.call(ids, id)) out.push(id);
+          set(out);
+          return;
+        }
+        var key = String(cursor.key);
+        var hash = key.indexOf('#');
+        if (hash > 0) ids[key.slice(0, hash)] = true;
+        cursor['continue']();
+      };
+    }).then(function (list) { return list || []; });
+  }
+
   function deleteChunks(storyId) {
     return tx('chunks', 'readwrite', function (store) {
       var range = IDBKeyRange.bound(storyId + '#', storyId + '#￿');
@@ -210,6 +236,7 @@ App.store = (function () {
     deleteStory: deleteStory,
     putChunk: putChunk,
     getChunk: getChunk,
+    chunkOwners: chunkOwners,
     getChunks: getChunks,
     deleteChunks: deleteChunks,
     putArt: putArt,

@@ -85,19 +85,20 @@ function writeWav(file, seconds) {
   check('an unchanged build keeps the same id', readBuildId(repeat) === buildId,
     `${buildId} vs ${readBuildId(repeat)}`);
 
-  // Changed input, changed id - otherwise the update never reaches anyone.
-  // The source file is put back whatever happens, including on a failure here.
-  const css = path.join(__dirname, '..', 'assets', 'css', 'app.css');
-  const original = fs.readFileSync(css);
-  let changedId;
-  try {
-    fs.writeFileSync(css, Buffer.concat([original, Buffer.from('\n/* build id probe */\n')]));
-    const changed = path.join(TMP, 'site-changed');
-    execFileSync(process.execPath, [BUILD_SCRIPT, changed], { stdio: 'ignore' });
-    changedId = readBuildId(changed);
-  } finally {
-    fs.writeFileSync(css, original);
+  /* Changed input, changed id - otherwise the update never reaches anyone.
+   * Built from a throwaway copy of the tree: editing a tracked file and putting
+   * it back would leave the working tree dirty if this run were interrupted. */
+  const srcCopy = path.join(TMP, 'src');
+  const repoRoot = path.join(__dirname, '..');
+  for (const entry of ['index.html', 'manifest.webmanifest', 'sw.js', 'assets']) {
+    fs.cpSync(path.join(repoRoot, entry), path.join(srcCopy, entry), { recursive: true });
   }
+  const copiedCss = path.join(srcCopy, 'assets', 'css', 'app.css');
+  fs.writeFileSync(copiedCss, fs.readFileSync(copiedCss, 'utf8') + '\n/* build id probe */\n');
+
+  const changed = path.join(TMP, 'site-changed');
+  execFileSync(process.execPath, [BUILD_SCRIPT, changed, srcCopy], { stdio: 'ignore' });
+  const changedId = readBuildId(changed);
   check('a changed file changes the id', !!changedId && changedId !== buildId,
     `${buildId} -> ${changedId}`);
 

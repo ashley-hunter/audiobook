@@ -11,7 +11,7 @@
  * phone: a script tag pointing at a file that is not there, or a file missing
  * from the service worker's shell list so the app half works offline.
  *
- *   node scripts/build-site.js [outDir]
+ *   node scripts/build-site.js [outDir] [srcDir]
  */
 'use strict';
 
@@ -19,8 +19,10 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-const ROOT = path.resolve(__dirname, '..');
-const OUT = path.resolve(ROOT, process.argv[2] || '_site');
+// A source root can be passed so a test can build from a throwaway copy of the
+// tree rather than editing tracked files to see what changes.
+const ROOT = path.resolve(process.argv[3] || path.join(__dirname, '..'));
+const OUT = path.resolve(process.cwd(), process.argv[2] || path.join(ROOT, '_site'));
 
 // Everything that ships. Directories are copied whole.
 const INCLUDE = [
