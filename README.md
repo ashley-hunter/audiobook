@@ -143,6 +143,14 @@ the app declares its audio as playback, which helps, but it cannot help iOS 12.
 the app cannot keep the screen on. It would be the wrong thing for a bedtime
 player anyway.
 
+**The sleep timer follows the audio, not the clock.** It counts down only while
+sound is actually coming out, so pausing holds it and playing resumes it from
+where it stopped - including when an interruption such as a call does the
+pausing, because it is driven by the element's own play and pause events rather
+than by the app's buttons. A fade already in progress is abandoned on pause and
+started again on resume, so a story paused inside the last twenty seconds still
+fades rather than being cut off at full volume.
+
 **`audio.volume` is read-only on iOS.** The sleep timer's fade therefore routes
 the element through Web Audio and ramps a `GainNode`. That routing is permanent
 for the life of an element, so the player throws the element away after a fade

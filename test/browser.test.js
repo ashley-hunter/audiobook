@@ -300,6 +300,34 @@ function writeWav(file, seconds) {
   check('sleep timer set to 10 minutes',
     (await page.evaluate(() => App.player.currentSleepMinutes())) === 10);
 
+  /* A fade in progress belongs to a countdown that is running. Pausing inside
+   * the last twenty seconds and playing again used to leave the fade flagged as
+   * already running, so it never restarted and the story was cut off at full
+   * volume - the one thing the sleep timer exists to avoid. */
+  const fade = await page.evaluate(async () => {
+    const audio = document.getElementById('audio');
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    App.player.setSleepMinutes(20 / 60);        // 20s, so the fade starts at once
+    await wait(2600);
+    const during = audio.volume;
+    App.player.pause();
+    await wait(500);
+    const paused = audio.volume;
+    await App.player.play();
+    await wait(300);
+    const resumed = audio.volume;
+    await wait(2600);
+    return { during: during, paused: paused, resumed: resumed, after: audio.volume };
+  });
+  check('the story fades as the timer runs out', fade.during < 0.95, JSON.stringify(fade));
+  check('pausing holds the fade where it was', Math.abs(fade.paused - fade.during) < 0.1,
+    JSON.stringify(fade));
+  check('resuming brings the sound back', fade.resumed > 0.95, JSON.stringify(fade));
+  check('and the fade starts again rather than cutting off at full volume',
+    fade.after < 0.95, JSON.stringify(fade));
+
+  await page.evaluate(() => { App.player.setSleepMinutes(10); });
+
   // The countdown must stop while the story is paused.
   const before = await page.evaluate(() => { App.player.pause(); return App.player.sleepLeft(); });
   await page.waitForTimeout(2500);

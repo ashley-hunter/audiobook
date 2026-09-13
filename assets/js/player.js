@@ -255,6 +255,13 @@ App.player = (function () {
     if (!sleepDeadline) return;
     sleepRemaining = sleepLeft();
     sleepDeadline = 0;
+    /* A fade in progress is abandoned along with the countdown. Without this,
+     * pausing inside the last twenty seconds and playing again leaves `fading`
+     * set: play() restores the volume, the tick sees a fade already running and
+     * never starts another, and the story is cut off at full volume instead of
+     * being faded out.
+     */
+    fading = false;
   }
 
   function setSleepMinutes(minutes) {
