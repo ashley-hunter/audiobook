@@ -169,11 +169,20 @@ started again on resume, so a story paused inside the last twenty seconds still
 fades rather than being cut off at full volume.
 
 **`audio.volume` is read-only on iOS.** The sleep timer's fade therefore routes
-the element through Web Audio and ramps a `GainNode`. That routing is permanent
-for the life of an element, so the player throws the element away after a fade
-and builds a fresh one. Where `volume` is writable (Android, desktop) it ramps
-that instead. If neither works, the timer stops the story without a fade rather
-than failing.
+the element through Web Audio and ramps a `GainNode`. Where `volume` is writable
+(Android, desktop) it ramps that instead.
+
+The routing is the delicate part, and getting it wrong is loud. Connecting an
+element to a graph takes its sound away from the speakers and hands it to the
+graph, so an element joined to a context iOS has not unlocked goes silent on the
+spot. A context can only be unlocked from inside a user gesture, so the graph is
+built when play is pressed - not when the fade starts, which is a timer callback
+twenty seconds before the end and far too late to ask. The element is only ever
+joined to a context confirmed to be running; if that never happens there is no
+fade and the story plays straight to the speakers, which is the right way to
+fail. The fade itself is a quadratic taper rather than a straight line in
+amplitude, which falls away faster than the ear expects, and every path back
+into playback resets the gain to one so a story always starts at full volume.
 
 **An update must not land on a finger.** A new worker claims the page as soon
 as it activates, and the app reloads to pick up the new release. That reload is

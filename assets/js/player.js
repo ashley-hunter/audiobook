@@ -1,9 +1,16 @@
 /* Bedtime - playback, the sleep timer and the bookkeeping around them.
  *
  * The player owns the <audio> element outright because the fade-out at the end
- * of the sleep timer has to route the element through Web Audio (iOS ignores
- * audio.volume), and that routing is permanent for the life of the element.
- * After a fade the element is thrown away and a fresh one takes its place.
+ * of the sleep timer has to route it through Web Audio - iOS ignores
+ * audio.volume - and that routing is permanent for the life of the element.
+ *
+ * The routing is the delicate part. Connecting an element to a graph takes its
+ * sound away from the speakers and hands it to the graph, so an element joined
+ * to a context iOS has not unlocked goes completely silent. That has to happen
+ * from inside a user gesture, which is why the graph is built when play is
+ * pressed rather than at fade time, and why the element is only ever connected
+ * once the context is confirmed running. If it never runs there is no fade and
+ * the story plays straight to the speakers, which is the right way to fail.
  */
 window.App = window.App || {};
 
@@ -31,6 +38,7 @@ App.player = (function () {
 
   var ctx = null;
   var gain = null;
+  var graphEl = null;       // the element currently wired into the graph
   var volumeWorks = null;
 
   function on(map) {
@@ -134,19 +142,6 @@ App.player = (function () {
     emit('tick', position(), total);
   }
 
-  function replaceAudio() {
-    var old = audio;
-    audio = makeAudio();
-    if (old && old.parentNode) old.parentNode.replaceChild(audio, old);
-    else document.body.appendChild(audio);
-    if (old) {
-      old.removeAttribute('src');
-      try { old.load(); } catch (err) { void err; }
-    }
-    ctx = null;
-    gain = null;
-  }
-
   /* ------------------------------------------------------------- loading */
 
   function load(next, options) {
@@ -158,7 +153,6 @@ App.player = (function () {
     listenedCarry = 0;
     lastTickAt = 0;
     lastSaved = 0;
-    if (ctx) replaceAudio();
 
     return App.media.source(story).then(function (src) {
       usedServiceWorker = src.viaServiceWorker;
@@ -196,6 +190,11 @@ App.player = (function () {
   function play() {
     if (!story) return Promise.resolve();
     asleep = false;
+    /* Pressing play is the user gesture the audio graph needs. Building it here
+     * rather than when the fade starts is the whole reason the fade works: a
+     * context first created from a timer, twenty seconds before the end, is one
+     * iOS will never unlock. */
+    ensureGraph();
     restoreGain();
     var result = audio.play();
     if (result && result['catch']) {
@@ -326,6 +325,9 @@ App.player = (function () {
 
     emit('tick', position(), duration());
     if (isPlaying) App.caps.media.setPosition(duration(), position(), audio.playbackRate || 1);
+    // A context unlocked a moment after play was pressed still gets wired up,
+    // so the fade is ready long before the timer needs it.
+    if (isPlaying && ctx && !gain) connectGraph();
 
     if (!sleepDeadline || !isPlaying) {
       emit('sleep', sleepLeft());
@@ -371,15 +373,24 @@ App.player = (function () {
   }
 
   function startFade(seconds) {
-    fading = true;
     if (volumeIsWritable()) {
+      fading = true;
       fadeWithVolume(seconds);
       return;
     }
-    if (!fadeWithWebAudio(seconds)) {
-      // No way to fade on this device - the timer just stops the story.
-      fading = false;
+    if (gain && ctx && ctx.state === 'running') {
+      fading = true;
+      fadeWithGain(seconds);
+      return;
     }
+    /* No live graph, so there is no way to fade on this device. Leaving `fading`
+     * unset means the tick tries again a second later, in case the context
+     * finishes unlocking inside the window; if it never does, the timer stops
+     * the story unfaded. That is worse than a fade and far better than the
+     * alternative this replaced, which reached for a graph that was not ready
+     * and silenced the story on the spot.
+     */
+    fading = false;
   }
 
   function fadeWithVolume(seconds) {
@@ -393,36 +404,99 @@ App.player = (function () {
     }, 120);
   }
 
-  function fadeWithWebAudio(seconds) {
+  /* A straight line in amplitude falls away faster than the ear expects, so the
+   * curve is the same quadratic the volume path uses, scheduled as a handful of
+   * short ramps. setValueCurveAtTime would say it in one call, but it is the
+   * least reliable corner of Web Audio on older WebKit and this needs none of
+   * its cleverness.
+   */
+  function fadeWithGain(seconds) {
+    var STEPS = 24;
+    try {
+      var now = ctx.currentTime;
+      var from = gain.gain.value || 1;
+      gain.gain.cancelScheduledValues(now);
+      gain.gain.setValueAtTime(from, now);
+      for (var i = 1; i <= STEPS; i++) {
+        var through = i / STEPS;
+        var level = from * (1 - through) * (1 - through);
+        // A gain of exactly zero is inaudible either way and keeps the ramp legal.
+        gain.gain.linearRampToValueAtTime(Math.max(0.0001, level), now + seconds * through);
+      }
+    } catch (err) {
+      void err;
+      fading = false;
+    }
+  }
+
+  /* Builds the graph, and unlocks it if iOS will allow it right now. Safe to
+   * call on every play: making a context costs nothing, and the element is not
+   * joined to it until the context is actually running.
+   */
+  function ensureGraph() {
+    if (volumeIsWritable()) return;      // the plain element can fade itself
     var Ctor = window.AudioContext || window.webkitAudioContext;
-    if (!Ctor) return false;
+    if (!Ctor) return;
     try {
       if (!ctx) {
         ctx = new Ctor();
-        var sourceNode = ctx.createMediaElementSource(audio);
-        gain = ctx.createGain();
-        sourceNode.connect(gain);
-        gain.connect(ctx.destination);
+        unlockContext(ctx);
       }
-      if (ctx.state === 'suspended' && ctx.resume) ctx.resume();
-      var now = ctx.currentTime;
-      gain.gain.cancelScheduledValues(now);
-      gain.gain.setValueAtTime(gain.gain.value || 1, now);
-      gain.gain.linearRampToValueAtTime(0.0001, now + seconds);
-      return true;
+      if (ctx.state === 'suspended' && ctx.resume) {
+        var resumed = ctx.resume();
+        if (resumed && resumed.then) resumed.then(connectGraph, function () { return null; });
+      }
+      connectGraph();
     } catch (err) {
       void err;
       ctx = null;
       gain = null;
-      return false;
+      graphEl = null;
     }
   }
 
+  // Older iOS only really starts a context once something has played through it
+  // inside a gesture. One silent sample is the long-standing handshake.
+  function unlockContext(context) {
+    try {
+      var source = context.createBufferSource();
+      source.buffer = context.createBuffer(1, 1, 22050);
+      source.connect(context.destination);
+      if (source.start) source.start(0);
+      else if (source.noteOn) source.noteOn(0);
+    } catch (err) { void err; }
+  }
+
+  /* The one dangerous call in the file. createMediaElementSource takes the
+   * element's sound away from the speakers for good, so it only ever runs
+   * against a context that is already running.
+   */
+  function connectGraph() {
+    if (!ctx || !audio) return;
+    if (graphEl === audio && gain) return;
+    if (ctx.state !== 'running') return;
+    try {
+      var source = ctx.createMediaElementSource(audio);
+      gain = ctx.createGain();
+      gain.gain.value = 1;
+      source.connect(gain);
+      gain.connect(ctx.destination);
+      graphEl = audio;
+    } catch (err) {
+      void err;
+      gain = null;
+      graphEl = null;
+    }
+  }
+
+  // Whatever happened last night, the story starts at full volume.
   function restoreGain() {
     if (gain && ctx) {
       try {
-        gain.gain.cancelScheduledValues(ctx.currentTime);
-        gain.gain.setValueAtTime(1, ctx.currentTime);
+        var now = ctx.currentTime;
+        gain.gain.cancelScheduledValues(now);
+        gain.gain.setValueAtTime(1, now);
+        gain.gain.value = 1;
       } catch (err) { void err; }
     }
     if (audio && volumeWorks) {
@@ -504,6 +578,7 @@ App.player = (function () {
     defaultSleepMinutes: defaultSleepMinutes,
     currentSleepMinutes: currentSleepMinutes,
     sleepLeft: sleepLeft,
+    fadeLevel: function () { return gain ? gain.gain.value : null; },
     isAsleep: function () { return asleep; },
     checkpoint: checkpoint
   };
