@@ -13,11 +13,9 @@ App.settings = (function () {
     bedtime: '19:30',
     perNight: 2,
     sleepMinutes: 20,
-    lock: true,
     dim: true,
     resume: true,
-    showOurs: true,
-    taughtParentGate: false
+    showOurs: true
   };
 
   var current = null;

@@ -31,8 +31,8 @@ There is no build step. The files you edit are the files that ship.
 | **Saved** | Everything hearted. |
 | **Player** | Starfield, progress ring, play/pause, sleep timer, and a "Sleep tight" curtain once the timer runs out. The sky darkens as the story progresses. |
 | **Sleep timer** | 10 / 20 / 30 minutes or to the end of the story. The sound fades out over the last 20 seconds. |
-| **Parent controls** | Hold the moon for three seconds. Bedtime, stories per night, default timer, child's name, safety switches, storage use, what this device supports, and the week's listening. |
-| **Add stories** | Pick audio from the Files app. Each file is copied into the app, tagged, given cover art, and listed. |
+| **Parent controls** | Hold the moon for three seconds. Bedtime, stories per night, default timer, child's name, playback switches, storage use, what this device supports, and the week's listening. |
+| **Add stories** | Pick audio from the Files app. Each file is copied into the app, tagged, given cover art, and listed. Reachable from the header, the empty state and parent controls - anyone can add. |
 
 Everything is real: the settings persist, the listening statistics are counted
 from actual playback, and the storage figures are the actual bytes held.
@@ -190,12 +190,13 @@ Places where the prototype could not be followed literally, and why:
 - **"Downloads over Wi-Fi only" was replaced with "Remember where each story
   stopped".** Nothing downloads in a local-file app, so the original switch would
   have done nothing. The replacement is real and defaults to on.
-- **"Lock to the library" became "Only parents can add stories"**, which is what
-  it actually does: it hides the Add button from the child's screens, leaving
-  import available only through parent controls. It defaults on, but an empty
-  library has nothing to protect, so the Add route always shows while there are
-  no stories - otherwise a fresh install is a dead end, inviting you to add a
-  story with no button to do it. The first import says where the button went.
+- **"Lock to the library" is gone.** It was implemented as "Only parents can add
+  stories", hiding the Add button and leaving the three second moon hold as the
+  only way in. That made a fresh install a dead end - the empty state invited
+  you to add a story with no button to do it. Adding is now open to anyone, from
+  the header chip, the empty state and parent controls alike. Parent controls
+  themselves stay behind the moon hold, so settings, removal and the week's
+  listening are still not somewhere a child lands by accident.
 - **Bedtime, stories per night and child's name are editable.** The prototype
   draws them as static rows. A settings row that does nothing is worse than one
   that works, so they use native controls and feed the home screen's subtitle.

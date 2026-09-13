@@ -201,39 +201,24 @@ window.App = window.App || {};
     renderMoods(visible);
     renderRows($('library-rows'), filteredStories());
 
-    /* The lock stops a child adding to a library that already exists. It must
-     * never stop anyone setting one up: an empty library has nothing to
-     * protect, and the empty state would otherwise say "tap Add" beside no Add
-     * button, leaving the three second moon hold as the only way in.
-     */
-    var canAdd = !settings.lock || stories.length === 0;
-    ui.show($('add-btn'), canAdd);
-    ui.show($('add-btn-saved'), canAdd);
-
     var empty = $('library-empty');
     ui.show(empty, visible.length === 0);
-    if (visible.length === 0) renderEmptyState(empty, canAdd);
+    if (visible.length === 0) renderEmptyState(empty);
   }
 
-  function renderEmptyState(empty, canAdd) {
+  function renderEmptyState(empty) {
     ui.clear(empty);
     var hiddenByParent = stories.length > 0;
 
     empty.appendChild(ui.el('p', 'empty-title display display-sm',
       hiddenByParent ? 'Stories are hidden' : 'No stories yet'));
 
-    if (hiddenByParent) {
-      // Reached only when a parent turned the library off, so this explains
-      // without teaching a child the way into parent controls.
-      empty.appendChild(ui.el('p', null,
-        'A parent can show them again from the Add stories screen.'));
-      return;
-    }
+    empty.appendChild(ui.el('p', null, hiddenByParent
+      // The "Show in the library" switch lives on the Add screen, so the same
+      // button is the way back from here as well as the way to add more.
+      ? 'Turn "Show in the library" back on from the Add stories screen.'
+      : 'Bring in audio you already own. Files are copied into this app and stay on this phone.'));
 
-    empty.appendChild(ui.el('p', null,
-      'Bring in audio you already own. Files are copied into this app and stay on this phone.'));
-
-    if (!canAdd) return;
     var button = ui.el('button', 'empty-add');
     button.type = 'button';
     button.appendChild(ui.el('span', 'plus', '+'));
@@ -497,7 +482,6 @@ window.App = window.App || {};
     var settings = App.settings.get();
     var host = $('toggles');
     var rows = [
-      { key: 'lock', label: 'Only parents can add stories' },
       { key: 'dim', label: 'Screen dims while playing' },
       { key: 'resume', label: 'Remember where each story stopped' }
     ];
@@ -631,7 +615,6 @@ window.App = window.App || {};
       return App.importer.importFile(file, function (fraction) {
         setRowProgress(row, fraction);
       }).then(function (story) {
-        var wasFirst = stories.length === 0;
         stories = sortStories(stories.concat([story]));
         finishRow(row, story);
         renderAll();
@@ -639,7 +622,6 @@ window.App = window.App || {};
         // Browsers weigh engagement, so a request right after a real import is
         // far more likely to be granted than one at a cold start.
         refreshStorageFacts();
-        if (wasFirst) teachParentGate();
         return next();
       })['catch'](function (err) {
         failRow(row, err && err.message ? err.message : 'Failed');
@@ -825,19 +807,6 @@ window.App = window.App || {};
     };
 
     wireHold();
-  }
-
-  /* Adding the first story is what switches the lock on in practice: the Add
-   * button was only showing because the library was empty, and it is about to
-   * disappear. Say where it went, once, rather than leaving a parent hunting.
-   */
-  function teachParentGate() {
-    var settings = App.settings.get();
-    if (!settings.lock || settings.taughtParentGate) return;
-    App.settings.set({ taughtParentGate: true });
-    setTimeout(function () {
-      ui.toast('Added. To add more later, hold the moon for three seconds.');
-    }, 900);
   }
 
   function openAdd() {

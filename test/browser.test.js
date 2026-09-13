@@ -86,12 +86,12 @@ function writeWav(file, seconds) {
   check('boots cleanly', errors.length === 0, errors.join(' | '));
   check('empty state is shown', await page.locator('#library-empty').isVisible());
 
-  /* The lock defaults on, but an empty library has nothing to protect. If the
-   * Add route is gone here, a fresh install is a dead end: the empty state
-   * invites you to add a story and the only way in is a hidden gesture. */
-  check('locked but empty still offers the header Add',
+  /* Adding is open to anyone, so both routes are always present. A fresh
+   * install must never be a dead end that invites you to add a story with no
+   * button to do it. */
+  check('the header Add button is there on a fresh install',
     await page.locator('#add-btn').isVisible());
-  check('locked but empty offers an Add button in the empty state',
+  check('the empty state offers its own Add button',
     await page.locator('.empty-add').isVisible());
   check('the empty state does not point at a button that is not there',
     (await page.locator('#library-empty').textContent()).indexOf('Tap Add') < 0);
@@ -131,17 +131,12 @@ function writeWav(file, seconds) {
 
   await page.locator('#add-close').click();
   await page.locator('#parent-close').click();
-  await page.waitForTimeout(1800);
+  await page.waitForTimeout(1000);
   check('library shows one row', (await page.locator('#library-rows .row').count()) === 1);
-
-  check('the lock applies once there is a library to protect',
-    !(await page.locator('#add-btn').isVisible()));
-  const taught = await page.evaluate(() => ({
-    flag: App.settings.get().taughtParentGate,
-    toast: document.getElementById('toast').textContent,
-  }));
-  check('the first import says where the Add button went',
-    taught.flag === true && taught.toast.indexOf('hold the moon') >= 0, JSON.stringify(taught));
+  check('the Add button stays put once there is a library',
+    await page.locator('#add-btn').isVisible());
+  check('no add gate is left in the settings',
+    (await page.evaluate(() => Object.keys(App.settings.get()).join(','))).indexOf('lock') < 0);
 
   /* --------------------------------------------- service worker media route */
   check('media route is usable', (await page.evaluate(() => App.media.probe())) === true);
@@ -175,12 +170,6 @@ function writeWav(file, seconds) {
   check('range past the end returns 416', past === 416, 'status=' + past);
 
   /* ------------------------------ the window cap on a file larger than 4 MiB */
-  await page.evaluate(() => { App.settings.set({ lock: false }); App.settings.flush(); });
-  await page.waitForTimeout(400);
-  await page.reload({ waitUntil: 'networkidle' });
-  await page.waitForTimeout(900);
-  check('unlocking reveals the add button on the home screen',
-    await page.locator('#add-btn').isVisible());
   await page.locator('#add-btn').click();
   await page.waitForTimeout(300);
   await page.locator('#file-input').setInputFiles(BIG);
@@ -207,8 +196,6 @@ function writeWav(file, seconds) {
   await page.evaluate(async () => {
     const found = App.debug.stories().filter(function (s) { return s.title === 'The Button Kingdom'; });
     if (found.length) await App.store.deleteStory(found[0].id);
-    App.settings.set({ lock: true });
-    App.settings.flush();
   });
   await page.reload({ waitUntil: 'networkidle' });
   await page.waitForTimeout(900);
