@@ -154,7 +154,11 @@ function writeWav(file, seconds) {
   check('media route is usable at the subpath', (await page.evaluate(() => App.media.probe())) === true);
 
   /* ------------------------------------------------------------- importing */
-  await page.locator('#tab-parent').click();
+  const moon = await page.locator('#moon-btn').boundingBox();
+  await page.mouse.move(moon.x + moon.width / 2, moon.y + moon.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(3400);
+  await page.mouse.up();
   await page.locator('#parent-add').click();
   await page.waitForTimeout(400);
   await page.locator('#file-input').setInputFiles(FIXTURE);

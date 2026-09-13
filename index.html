@@ -34,7 +34,11 @@
           <h1 class="display display-xl">Good night, <span id="home-name">you</span></h1>
           <p class="sub" id="home-sub">Pick something for tonight</p>
         </div>
-        <button class="moon-btn" id="moon-btn" type="button" aria-label="Parent controls">
+        <button class="moon-btn" id="moon-btn" type="button" aria-label="Parent controls, hold for three seconds">
+          <svg class="moon-ring" viewBox="0 0 52 52" aria-hidden="true" focusable="false">
+            <circle class="moon-ring-track" cx="26" cy="26" r="24.5"></circle>
+            <circle class="moon-ring-fill" id="hold-ring" cx="26" cy="26" r="24.5"></circle>
+          </svg>
           <span class="moon-face">&#9790;</span>
         </button>
       </header>
@@ -84,7 +88,6 @@
   <nav class="tabbar" id="tabbar">
     <button class="tab is-on" id="tab-home" type="button"><span class="tab-icon">&#9790;</span>Tonight</button>
     <button class="tab" id="tab-saved" type="button"><span class="tab-icon">&#9829;</span>Saved</button>
-    <button class="tab" id="tab-parent" type="button"><span class="tab-icon">&#9881;&#65038;</span>Parents</button>
   </nav>
 
   <!-- ───────────────────────── player ───────────────────────── -->
@@ -149,7 +152,7 @@
         <h1 class="display display-xl">Parent controls</h1>
         <button class="done" id="parent-close" type="button">Done</button>
       </div>
-      <p class="paper-sub">Settings for <span id="parent-name">your child</span>&rsquo;s stories, and what is stored on this phone.</p>
+      <p class="paper-sub"><span id="parent-name">Your child</span> can&rsquo;t reach this screen - it opens by holding the moon for three seconds.</p>
 
       <div class="card">
         <label class="card-row">Bedtime

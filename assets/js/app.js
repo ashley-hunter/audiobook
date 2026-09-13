@@ -13,12 +13,15 @@ window.App = window.App || {};
   var ui = App.ui;
   var $ = ui.$;
 
+  var HOLD_MS = 3000;       // how long the moon must be held to reach parent controls
+
   var stories = [];
   var tab = 'home';
   var mood = 'All';
   var currentId = null;
   var importRows = {};
-  var parentOpen = false;
+  var holdTimer = null;
+  var holdStart = 0;
   var persistedState = null;   // null until the browser has been asked
   var spaceEstimate = null;    // null on browsers that will not say
   var importing = false;       // chunks are being written; do not reload
@@ -290,9 +293,8 @@ window.App = window.App || {};
   }
 
   function renderTabs() {
-    ui.toggleClass($('tab-home'), 'is-on', !parentOpen && tab === 'home');
-    ui.toggleClass($('tab-saved'), 'is-on', !parentOpen && tab === 'saved');
-    ui.toggleClass($('tab-parent'), 'is-on', parentOpen);
+    ui.toggleClass($('tab-home'), 'is-on', tab === 'home');
+    ui.toggleClass($('tab-saved'), 'is-on', tab === 'saved');
     ui.show($('screen-home'), tab === 'home');
     ui.show($('screen-saved'), tab === 'saved');
   }
@@ -929,9 +931,10 @@ window.App = window.App || {};
       ui.toggleClass($('add'), 'is-open', false);
       $('add').setAttribute('aria-hidden', 'true');
     };
-    $('parent-close').onclick = closeParent;
-    $('tab-parent').onclick = openParent;
-    $('moon-btn').onclick = openParent;
+    $('parent-close').onclick = function () {
+      ui.toggleClass($('parent'), 'is-open', false);
+      $('parent').setAttribute('aria-hidden', 'true');
+    };
 
     $('file-input').onchange = function (event) {
       handleFiles(event.target.files || []);
@@ -964,6 +967,7 @@ window.App = window.App || {};
       renderParent();
     };
 
+    wireHold();
   }
 
   function openAdd() {
@@ -979,20 +983,46 @@ window.App = window.App || {};
     $('library').scrollTop = 0;
   }
 
+  // Hold the moon for three seconds to reach parent controls. Pointer events
+  // do not exist on iOS 12, so touch and mouse are wired separately.
+  function wireHold() {
+    var button = $('moon-btn');
+    var ring = $('hold-ring');
+
+    function start(event) {
+      if (event.type === 'touchstart') event.preventDefault();
+      holdStart = Date.now();
+      clearInterval(holdTimer);
+      holdTimer = setInterval(function () {
+        var fraction = (Date.now() - holdStart) / HOLD_MS;
+        ui.ring(ring, fraction);
+        if (fraction >= 1) {
+          stop();
+          openParent();
+        }
+      }, 50);
+    }
+
+    function stop() {
+      clearInterval(holdTimer);
+      holdTimer = null;
+      ui.ring(ring, 0);
+    }
+
+    button.addEventListener('touchstart', start, false);
+    button.addEventListener('touchend', stop, false);
+    button.addEventListener('touchcancel', stop, false);
+    button.addEventListener('mousedown', start, false);
+    button.addEventListener('mouseup', stop, false);
+    button.addEventListener('mouseleave', stop, false);
+    button.addEventListener('contextmenu', function (event) { event.preventDefault(); }, false);
+  }
+
   function openParent() {
     renderParent();
     applySettingsToForm();
-    parentOpen = true;
-    renderTabs();
     ui.toggleClass($('parent'), 'is-open', true);
     $('parent').setAttribute('aria-hidden', 'false');
-  }
-
-  function closeParent() {
-    parentOpen = false;
-    renderTabs();
-    ui.toggleClass($('parent'), 'is-open', false);
-    $('parent').setAttribute('aria-hidden', 'true');
   }
 
   /* --------------------------------------------------------------- startup */
