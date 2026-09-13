@@ -15,7 +15,8 @@
  * storage.estimate()        Safari 15.2      space shown as bytes held only
  * Blob.arrayBuffer()        Safari 14        FileReader
  * requestIdleCallback       Safari 18        setTimeout
- * beforeinstallprompt       Chromium only    the Add to Home Screen tip
+ * beforeinstallprompt       Chromium only    no Install row; Safari installs
+ *                                            from its own Share menu
  */
 window.App = window.App || {};
 
@@ -214,8 +215,8 @@ App.caps = (function () {
     if (has.installPrompt) fn(true);
   }
 
-  // Chromium can install from a button. Safari cannot, so the app shows the
-  // Share -> Add to Home Screen tip there instead.
+  // Chromium can install from a button. Safari installs from its own Share
+  // menu, so there is nothing for the app to do there.
   function promptInstall() {
     if (!deferredPrompt) return Promise.resolve(false);
     var prompt = deferredPrompt;
@@ -230,20 +231,6 @@ App.caps = (function () {
       void err;
       return Promise.resolve(false);
     }
-  }
-
-  function isStandalone() {
-    if (nav.standalone === true) return true;
-    if (window.matchMedia) {
-      try {
-        return window.matchMedia('(display-mode: standalone)').matches;
-      } catch (err) { void err; }
-    }
-    return false;
-  }
-
-  function isIOS() {
-    return /iP(hone|ad|od)/.test(nav.platform || nav.userAgent || '');
   }
 
   /* ---------------------------------------------------------------- report */
@@ -295,8 +282,6 @@ App.caps = (function () {
     media: media,
     onInstallAvailable: onInstallAvailable,
     promptInstall: promptInstall,
-    isStandalone: isStandalone,
-    isIOS: isIOS,
     report: report
   };
 })();

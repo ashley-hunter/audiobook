@@ -44,7 +44,7 @@ window.App = window.App || {};
         renderAll();
         App.caps.idle(verifyStorage, 3000);
         refreshStorageFacts();
-        nudgeInstall();
+        wireInstallRow();
         wireTeardown();
       })
       ['catch'](function (err) {
@@ -87,18 +87,12 @@ window.App = window.App || {};
     })['catch'](function () { return null; });
   }
 
-  // A Home Screen install is what gives the player its full screen and its own
-  // storage. Chromium can offer a button; Safari can only be told how.
-  function nudgeInstall() {
+  // Chromium can install from a button, so show the row when it offers one.
+  // Safari cannot, and is left alone rather than nagged about it.
+  function wireInstallRow() {
     App.caps.onInstallAvailable(function (available) {
       ui.show($('install-row'), available);
     });
-    if (App.caps.isStandalone()) return;
-    if (App.caps.isIOS()) {
-      setTimeout(function () {
-        ui.toast('Tip: Share → Add to Home Screen, so the player runs full screen.');
-      }, 1500);
-    }
   }
 
   /* ================================================================== data */

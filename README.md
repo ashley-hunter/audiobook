@@ -89,7 +89,7 @@ the app touches these directly, which `npm run check` enforces.
 | `storage.estimate()` | Safari 15.2 | Parent controls show the real space left for the app | Shows the bytes held |
 | `Blob.arrayBuffer()` | Safari 14 | Chunks are read straight to an ArrayBuffer | `FileReader` |
 | `requestIdleCallback` | Safari 18 | The startup storage audit waits for a quiet moment | A short `setTimeout` |
-| `beforeinstallprompt` | Chromium only | An Install row in parent controls | The Share -> Add to Home Screen tip |
+| `beforeinstallprompt` | Chromium only | An Install row in parent controls | No row; Safari installs from its own Share menu |
 
 The **"This device"** card in parent controls lists these live with a tick or a
 dash and a plain-language reason, so the fallbacks are visible rather than
