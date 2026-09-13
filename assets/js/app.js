@@ -175,6 +175,32 @@ window.App = window.App || {};
     return list.filter(function (s) { return s.mood === mood; });
   }
 
+  /* Tonight's line-up.
+   *
+   * A grown-up taps stories in parent controls to line them up; `pickAt` is the
+   * moment each was tapped, so the order is simply the order they were chosen.
+   * This is the app's whole answer to "what's on tonight" and "what's up next" -
+   * the home screen shows the line-up in order, and each story runs on into the
+   * one after it.
+   *
+   * With nothing chosen it falls back to the newest few, so a library that has
+   * never been curated still has a home screen worth looking at, and one story
+   * still ends the night rather than rolling into the rest of the library.
+   */
+  function lineup() {
+    return visibleStories().filter(function (s) {
+      return s.pickAt && !s.missing;
+    }).sort(function (a, b) { return a.pickAt - b.pickAt; });
+  }
+
+  function nextAfter(id) {
+    var chosen = lineup();
+    for (var i = 0; i < chosen.length; i++) {
+      if (chosen[i].id === id) return chosen[i + 1] || null;
+    }
+    return null;
+  }
+
   function keepGoingStory() {
     var best = null;
     var list = visibleStories();
@@ -316,11 +342,14 @@ window.App = window.App || {};
     }
 
     var visible = visibleStories();
-    var picks = visible.filter(function (s) {
+    var chosen = lineup();
+    var picks = chosen.length ? chosen : visible.filter(function (s) {
       return (!keep || s.id !== keep.id) && !s.missing;
     }).slice(0, 4);
-    ui.show($('picks-block'), picks.length >= 2);
-    renderPicks(picks);
+    // Two is the point at which the automatic strip reads as a choice rather
+    // than a repeat of the library. One deliberately chosen story always shows.
+    ui.show($('picks-block'), chosen.length ? picks.length > 0 : picks.length >= 2);
+    renderPicks(picks, chosen.length > 0);
 
     renderMoods(visible);
     renderRows($('library-rows'), filteredStories());
@@ -374,16 +403,21 @@ window.App = window.App || {};
     return minutesNow >= minutesBed && now.getHours() >= 12;
   }
 
-  function renderPicks(picks) {
+  function renderPicks(picks, numbered) {
     var host = $('picks');
     ui.clear(host);
-    picks.forEach(function (story) {
+    picks.forEach(function (story, index) {
       var wrap = ui.el('div', 'pick');
       var button = ui.el('button', null);
       button.type = 'button';
+      var frame = ui.el('span', 'pick-frame');
       var cover = ui.el('span', 'cover pick-cover');
       ui.paintCover(cover, story);
-      button.appendChild(cover);
+      frame.appendChild(cover);
+      // The number is what tells a child which story is first tonight, so it
+      // only appears when a grown-up actually put them in an order.
+      if (numbered) frame.appendChild(ui.el('span', 'pick-no', String(index + 1)));
+      button.appendChild(frame);
       button.appendChild(ui.el('span', 'pick-title', story.title));
       button.appendChild(ui.el('span', 'pick-mins', ui.minutes(story.len)));
       button.style.display = 'block';
@@ -471,7 +505,21 @@ window.App = window.App || {};
     ui.paintCover($('disc-cover'), story);
     ui.toggleClass($('player-fav'), 'is-on', !!story.fav);
     renderTimerOptions();
+    renderUpNext();
     updateProgress(App.player.position(), App.player.duration());
+  }
+
+  /* Auto-advance is a surprise unless the player says it is coming, so the line
+   * that names the next story is also the thing that makes the behaviour
+   * understandable. Nothing lined up after this one, nothing shown.
+   */
+  function renderUpNext() {
+    var node = $('upnext');
+    if (!node) return;
+    var story = current();
+    var next = story ? nextAfter(story.id) : null;
+    ui.text(node, next ? 'Up next \u00b7 ' + next.title : '');
+    ui.show(node, !!next);
   }
 
   function updateProgress(position, length) {
@@ -597,9 +645,15 @@ window.App = window.App || {};
       asleep: function () {
         ui.toggleClass($('asleep'), 'is-on', true);
       },
-      ended: function () {
+      ended: function (sleepCarried) {
         ui.toggleClass($('asleep'), 'is-on', false);
+        var next = nextAfter(currentId);
         renderHome();
+        /* Only a deliberate line-up runs on. Falling out of one story and into
+         * the rest of the library at bedtime is the opposite of what this app
+         * is for, and a countdown already at zero means the night is over. */
+        if (next && sleepCarried > 0) openStory(next.id, { carrySleep: sleepCarried });
+        else renderUpNext();
       },
       loaded: function (story) {
         currentId = story.id;
@@ -611,7 +665,8 @@ window.App = window.App || {};
     });
   }
 
-  function openStory(id) {
+  function openStory(id, options) {
+    var opts = options || {};
     var story = byId(id);
     if (!story) return;
     if (story.missing) {
@@ -624,7 +679,8 @@ window.App = window.App || {};
     App.player.load(story, { autoplay: true, startAt: resume })['catch'](function (err) {
       ui.toast(err && err.message ? err.message : 'That story could not be opened.');
     });
-    App.player.setSleepMinutes(App.settings.get().sleepMinutes);
+    if (opts.carrySleep > 0) App.player.carrySleep(opts.carrySleep);
+    else App.player.setSleepMinutes(App.settings.get().sleepMinutes);
     renderPlayer();
   }
 
@@ -656,9 +712,90 @@ window.App = window.App || {};
     var count = stories.length;
     ui.text($('added-count'), count ? count + (count === 1 ? ' file' : ' files') : 'None yet');
 
+    renderLineup();
     renderToggles();
     renderStorage();
     renderWeek();
+  }
+
+  /* The line-up editor. Every story gets one button: tap to add it to tonight,
+   * tap its number to take it out again. Tap order is the play order, which
+   * saves inventing a way to drag rows around on a phone.
+   */
+  function renderLineup() {
+    var host = $('lineup-list');
+    if (!host) return;
+
+    var chosen = lineup();
+    var place = {};
+    chosen.forEach(function (story, index) { place[story.id] = index + 1; });
+
+    ui.text($('lineup-note'), chosen.length
+      ? chosen.length + (chosen.length === 1 ? ' story' : ' stories')
+        + ' lined up. They show on the home screen in this order, and each one runs on into the next.'
+      : 'Tap stories to line them up. With none chosen the home screen shows the newest few.');
+
+    ui.clear(host);
+    ui.show(host, stories.length > 0);
+
+    stories.forEach(function (story) {
+      var row = ui.el('div', 'stored');
+      var textWrap = ui.el('div', 'stored-text');
+      textWrap.appendChild(ui.el('p', 'stored-name', story.title));
+      textWrap.appendChild(ui.el('p', 'stored-meta' + (story.missing ? ' is-missing' : ''),
+        story.missing ? 'Audio was cleared by iOS' : ui.minutes(story.len)));
+
+      var at = place[story.id];
+      var pick = ui.el('button', 'pick-toggle' + (at ? ' is-on' : ''), at ? String(at) : 'Add');
+      pick.type = 'button';
+      pick.disabled = !!story.missing;
+      pick.setAttribute('aria-pressed', at ? 'true' : 'false');
+      pick.setAttribute('aria-label', at
+        ? 'Take ' + story.title + ' out of tonight\u2019s picks'
+        : 'Add ' + story.title + ' to tonight\u2019s picks');
+      pick.onclick = function () { togglePick(story.id); };
+
+      row.appendChild(textWrap);
+      row.appendChild(pick);
+      host.appendChild(row);
+    });
+
+    if (chosen.length) {
+      var clear = ui.el('button', 'stored stored-btn', 'Clear tonight\u2019s picks');
+      clear.type = 'button';
+      clear.onclick = clearLineup;
+      host.appendChild(clear);
+    }
+  }
+
+  function togglePick(id) {
+    var story = byId(id);
+    if (!story || story.missing) return;
+
+    if (story.pickAt) {
+      story.pickAt = 0;
+    } else {
+      /* Two taps inside the same millisecond would tie, and a tie has no
+       * order. Nudging past the last one keeps the sequence strict. */
+      var last = 0;
+      lineup().forEach(function (s) { if (s.pickAt > last) last = s.pickAt; });
+      story.pickAt = Math.max(Date.now(), last + 1);
+    }
+
+    App.store.patchStory(id, { pickAt: story.pickAt })['catch'](function () { return null; });
+    renderLineup();
+    renderHome();
+    renderUpNext();
+  }
+
+  function clearLineup() {
+    lineup().forEach(function (story) {
+      story.pickAt = 0;
+      App.store.patchStory(story.id, { pickAt: 0 })['catch'](function () { return null; });
+    });
+    renderLineup();
+    renderHome();
+    renderUpNext();
   }
 
   function renderToggles() {
@@ -1097,6 +1234,8 @@ window.App = window.App || {};
   // Used by test/browser.test.js.
   App.debug = {
     stories: function () { return stories; },
+    lineup: lineup,
+    togglePick: togglePick,
     reclaimOrphanChunks: reclaimOrphanChunks,
     findArtwork: findArtwork
   };

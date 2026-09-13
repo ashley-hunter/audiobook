@@ -266,7 +266,23 @@ h1, h2, p { margin: 0; }
 
 .picks { display: -webkit-box; display: flex; flex-wrap: wrap; margin: 0 -8px; }
 .pick { width: 50%; box-sizing: border-box; padding: 0 8px; margin-bottom: 20px; }
+.pick-frame { display: block; position: relative; }
 .pick-cover { height: 150px; border-radius: 20px; width: 100%; }
+.pick-no {
+  position: absolute;
+  top: 8px; left: 8px;
+  width: 26px; height: 26px;
+  border-radius: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(3, 4, 14, .62);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  color: var(--cream);
+  font-size: 13px;
+  font-weight: 700;
+}
 .pick-title { display: block; margin-top: 9px; font-weight: 600; font-size: 15px; line-height: 1.25; }
 .pick-mins { display: block; margin-top: 4px; font-size: 13px; color: var(--cream-50); }
 
@@ -428,6 +444,19 @@ h1, h2, p { margin: 0; }
   font-size: 22px;
 }
 .round-sm { width: 44px; height: 44px; font-size: 19px; }
+
+/* Inline SVG beats a glyph for the chevron: U+2304 is missing from several of
+ * the fonts iOS falls back to, so the button came out blank or comically small
+ * on some devices. Drawn at 24 and scaled by the button that holds it. */
+.icon {
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.icon-chevron { width: 20px; height: 20px; }
 .heart { color: rgba(255, 255, 255, .45); }
 .heart.is-on { color: var(--pink); }
 
@@ -494,6 +523,15 @@ h1, h2, p { margin: 0; }
   color: rgba(246, 242, 234, .5);
 }
 @media (max-height: 700px) { .sleep-label { margin-top: 12px; } }
+.upnext {
+  text-align: center;
+  margin-top: 5px;
+  font-size: 12px;
+  color: rgba(246, 242, 234, .34);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* sleep sheet */
 .scrim {
@@ -798,6 +836,31 @@ audio { display: none; }
   display: flex;
   align-items: center;
 }
+.pick-toggle {
+  flex: none;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 18px;
+  background: rgba(0, 0, 0, .06);
+  color: var(--paper-45);
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pick-toggle.is-on { background: var(--ink); color: var(--cream); }
+.pick-toggle[disabled] { opacity: .4; }
+.stored-btn {
+  width: 100%;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--paper-45);
+  background: none;
+}
+
 .row.is-missing .row-title { color: var(--cream-55); }
 
 /* device capability list in parent controls */

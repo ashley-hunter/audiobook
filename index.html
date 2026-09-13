@@ -98,7 +98,11 @@
 
     <div class="player-inner">
       <div class="player-top">
-        <button class="round round-sm" id="player-close" type="button" aria-label="Close player">&#8964;</button>
+        <button class="round round-sm" id="player-close" type="button" aria-label="Close player">
+          <svg class="icon icon-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M6 9.5 L12 15.5 L18 9.5"></path>
+          </svg>
+        </button>
         <span class="eyebrow eyebrow-dim">Tonight&rsquo;s story</span>
         <button class="round round-sm heart" id="player-fav" type="button" aria-label="Save this story">&#9829;</button>
       </div>
@@ -132,6 +136,7 @@
         <button class="round" id="to-library" type="button" aria-label="Back to library">&#9776;</button>
       </div>
       <p class="sleep-label" id="sleep-label">&nbsp;</p>
+      <p class="upnext" id="upnext" hidden></p>
     </div>
 
     <div class="scrim" id="sheet-scrim"></div>
@@ -185,6 +190,12 @@
           <span class="muted">Install</span>
         </button>
       </div>
+
+      <p class="section-label">Tonight&rsquo;s picks</p>
+      <div class="card card-pad">
+        <p class="muted muted-sm" id="lineup-note">Tap stories to line them up. They show on the home screen in this order, and each one runs on into the next.</p>
+      </div>
+      <div class="card" id="lineup-list" hidden></div>
 
       <p class="section-label">Playback</p>
       <div class="card" id="toggles"></div>

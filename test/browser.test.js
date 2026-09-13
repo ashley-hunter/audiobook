@@ -24,6 +24,8 @@ const FIXTURE = path.join(TMP, 'Sleepy Foxes.wav');
 const FIXTURE_BYTES = writeWav(FIXTURE, 40);
 const BIG = path.join(TMP, 'The Button Kingdom.wav');   // over the 4 MiB window
 const BIG_BYTES = writeWav(BIG, 130);
+const SECOND = path.join(TMP, 'Moon Boat.wav');            // a second story, for the line-up
+writeWav(SECOND, 25);
 
 const log = [];
 let failed = 0;
@@ -367,6 +369,124 @@ function writeWav(file, seconds) {
     return (await (await fetch(url)).arrayBuffer()).byteLength;
   });
   check('blob fallback reassembles the file', blobBytes === FIXTURE_BYTES, 'bytes=' + blobBytes);
+
+  /* ------------------------------------------------------ tonight's line-up */
+  await page.locator('#add-btn').click();
+  await page.waitForTimeout(300);
+  await page.locator('#file-input').setInputFiles(SECOND);
+  await page.waitForFunction(
+    () => {
+      const rows = document.querySelectorAll('.import-status');
+      return rows.length > 0 && rows[rows.length - 1].textContent === 'Ready';
+    },
+    null, { timeout: 60000 }
+  );
+  await page.locator('#add-close').click();
+  await page.waitForTimeout(600);
+
+  check('the picks strip carries no numbers until someone chooses',
+    (await page.locator('#picks .pick-no').count()) === 0);
+
+  const moon3 = await page.locator('#moon-btn').boundingBox();
+  await page.mouse.move(moon3.x + moon3.width / 2, moon3.y + moon3.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(3400);
+  await page.mouse.up();
+  await page.waitForTimeout(500);
+
+  const pickToggle = (title) =>
+    page.locator('#lineup-list .stored').filter({ hasText: title }).locator('.pick-toggle');
+
+  check('parent controls offer every story for tonight',
+    (await page.locator('#lineup-list .pick-toggle').count()) === 2);
+
+  /* Tapped in the opposite order to the library, which sorts newest first, so
+   * a line-up that simply echoed the library would not pass this. */
+  await pickToggle('Sleepy Foxes').click();
+  await page.waitForTimeout(250);
+  await pickToggle('Moon Boat').click();
+  await page.waitForTimeout(250);
+
+  check('a picked story shows its place in the line-up',
+    (await pickToggle('Sleepy Foxes').textContent()) === '1' &&
+    (await pickToggle('Moon Boat').textContent()) === '2');
+
+  const lined = await page.evaluate(() => App.debug.lineup().map((s) => s.title));
+  check('the line-up is the order they were tapped, not the library order',
+    JSON.stringify(lined) === JSON.stringify(['Sleepy Foxes', 'Moon Boat']), JSON.stringify(lined));
+
+  await page.locator('#parent-close').click();
+  await page.waitForTimeout(600);
+
+  const strip = await page.evaluate(() => ({
+    shown: !document.getElementById('picks-block').hidden,
+    titles: [].slice.call(document.querySelectorAll('#picks .pick-title')).map((n) => n.textContent),
+    numbers: [].slice.call(document.querySelectorAll('#picks .pick-no')).map((n) => n.textContent),
+  }));
+  check('the home screen shows the line-up, in order and numbered',
+    strip.shown &&
+    JSON.stringify(strip.titles) === JSON.stringify(['Sleepy Foxes', 'Moon Boat']) &&
+    JSON.stringify(strip.numbers) === JSON.stringify(['1', '2']), JSON.stringify(strip));
+
+  await page.locator('#picks .pick button').first().click();
+  await page.waitForTimeout(2000);
+  check('the player names what is up next',
+    ((await page.locator('#upnext').textContent()) || '').indexOf('Moon Boat') >= 0,
+    await page.locator('#upnext').textContent());
+
+  /* The point of carrying the countdown: twenty minutes of sleep timer has to
+   * mean twenty minutes of night, not twenty minutes of every story. */
+  await page.locator('#open-sheet').click();
+  await page.waitForTimeout(300);
+  await page.locator('#sheet .timer-opt').first().click();
+  await page.waitForTimeout(6000);
+  const sleepBefore = await page.evaluate(() => App.player.sleepLeft());
+
+  await page.evaluate(() => App.player.seekTo(App.player.duration()));
+  await page.waitForFunction(
+    () => { const s = App.player.currentStory(); return !!s && s.title === 'Moon Boat'; },
+    null, { timeout: 20000 }
+  );
+  await page.waitForTimeout(1500);
+
+  const advanced = await page.evaluate(() => ({
+    title: App.player.currentStory().title,
+    playing: App.player.playing(),
+    sleep: App.player.sleepLeft(),
+    upnextHidden: document.getElementById('upnext').hidden,
+  }));
+  check('a finished story runs on into the next one',
+    advanced.title === 'Moon Boat' && advanced.playing, JSON.stringify(advanced));
+  check('the sleep timer carries across rather than starting again',
+    advanced.sleep > 0 && advanced.sleep <= sleepBefore,
+    `${sleepBefore} -> ${advanced.sleep}`);
+  check('the last story in the line-up has nothing up next', advanced.upnextHidden === true);
+
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(1200);
+  const survived = await page.evaluate(() => App.debug.lineup().map((s) => s.title));
+  check('the line-up survives a reload',
+    JSON.stringify(survived) === JSON.stringify(['Sleepy Foxes', 'Moon Boat']), JSON.stringify(survived));
+
+  const moon4 = await page.locator('#moon-btn').boundingBox();
+  await page.mouse.move(moon4.x + moon4.width / 2, moon4.y + moon4.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(3400);
+  await page.mouse.up();
+  await page.waitForTimeout(500);
+  await page.locator('#lineup-list .stored-btn').click();
+  await page.waitForTimeout(400);
+  check('clearing the line-up hands the strip back to the app',
+    (await page.evaluate(() => App.debug.lineup().length)) === 0 &&
+    (await page.locator('#picks .pick-no').count()) === 0);
+
+  await page.locator('#parent-close').click();
+  await page.evaluate(async () => {
+    const found = App.debug.stories().filter(function (s) { return s.title === 'Moon Boat'; });
+    if (found.length) await App.store.deleteStory(found[0].id);
+  });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(1000);
 
   /* ---------------------------------------------- removal, through the UI */
   const moon2 = await page.locator('#moon-btn').boundingBox();

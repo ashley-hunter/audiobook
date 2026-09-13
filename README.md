@@ -28,10 +28,11 @@ There is no build step. The files you edit are the files that ship.
 | Screen | Behaviour |
 | --- | --- |
 | **Tonight** | Greeting, a "Keep going" card for the half-finished story, tonight's picks, and the full library. |
+| **Tonight's picks** | Either the newest few stories, or a line-up a grown-up chose in parent controls - numbered in play order, and each one runs on into the next. |
 | **Saved** | Everything hearted. |
 | **Player** | Starfield, progress ring, scrubber, play/pause, sleep timer, and a "Sleep tight" curtain once the timer runs out. The sky darkens as the story progresses. |
 | **Sleep timer** | 10 / 20 / 30 minutes or to the end of the story. The sound fades out over the last 20 seconds. |
-| **Parent controls** | Hold the moon for three seconds. Bedtime, stories per night, default timer, child's name, playback switches, storage use, what this device supports, and the week's listening. |
+| **Parent controls** | Hold the moon for three seconds. Tonight's line-up, bedtime, stories per night, default timer, child's name, playback switches, storage use, what this device supports, and the week's listening. |
 | **Add stories** | Pick audio from the Files app. Each file is copied into the app, tagged, given cover art, and listed. Reachable from the header, the empty state and parent controls - anyone can add. |
 
 Everything is real: the settings persist, the listening statistics are counted
@@ -255,6 +256,21 @@ Places where the prototype could not be followed literally, and why:
   leaves the thumb alone while a finger is on it. Safari draws no fill for the
   elapsed part, so that is a gradient on the input itself - not on the track
   pseudo-element, which a script cannot reach.
+- **Tonight's picks became choosable.** The prototype draws a fixed strip of
+  covers with nothing behind it. Here the strip is a line-up: parent controls
+  list every story with one button each, and tapping them puts them in order -
+  tap order is play order, which avoids inventing a way to drag rows around on a
+  phone. The home screen then shows that line-up numbered, and a finished story
+  runs on into the next one, so the line-up is also the answer to "what's up
+  next"; the player names it under the sleep timer. Choose nothing and the strip
+  falls back to the newest few, and a story ends the night on its own rather
+  than rolling into the rest of the library. An unfinished sleep timer is handed
+  to the next story rather than restarted, because twenty minutes of sleep timer
+  has to mean twenty minutes of night, not twenty minutes per story.
+- **The player's close control is an inline SVG chevron,** not the `U+2304 ⌄`
+  character the prototype uses. Several of the fonts iOS falls back to have no
+  glyph for it, so the button came out blank or comically small. The other
+  symbols (moon, heart, list) are in every iOS font and stay as text.
 - **The iOS device frame** (`ios-frame.jsx`) is prototype chrome, not part of the
   app - on the phone the real status bar and home indicator do that job.
 

@@ -275,6 +275,20 @@ App.player = (function () {
     if (sleepDeadline) sleepDeadline = Date.now() + sleepRemaining * 1000;
   }
 
+  /* Hands an unfinished countdown to the story that follows. Ending a story
+   * resets the timer, which is right when that was the last of the night and
+   * wrong when a line-up runs on: twenty minutes of sleep timer has to mean
+   * twenty minutes, not twenty minutes per story.
+   */
+  function carrySleep(seconds) {
+    if (!(seconds > 0)) return;
+    sleepRemaining = seconds;
+    sleepDeadline = playing() ? Date.now() + seconds * 1000 : 0;
+    fading = false;
+    restoreGain();
+    emit('sleep', sleepLeft());
+  }
+
   function sleepLeft() {
     if (!sleepDeadline) return sleepRemaining;
     return Math.max(0, Math.round((sleepDeadline - Date.now()) / 1000));
@@ -438,6 +452,7 @@ App.player = (function () {
   }
 
   function onEnded() {
+    var carried = sleepLeft();    // read before the reset below throws it away
     sleepDeadline = 0;
     sleepRemaining = sleepMinutes * 60;
 
@@ -445,7 +460,7 @@ App.player = (function () {
       story.pos = 0;
       App.store.patchStory(story.id, { pos: 0 })['catch'](function () { return null; });
     }
-    emit('ended');
+    emit('ended', carried);
   }
 
   function onAudioError() {
@@ -485,6 +500,7 @@ App.player = (function () {
     playing: playing,
     currentStory: currentStory,
     setSleepMinutes: setSleepMinutes,
+    carrySleep: carrySleep,
     defaultSleepMinutes: defaultSleepMinutes,
     currentSleepMinutes: currentSleepMinutes,
     sleepLeft: sleepLeft,
