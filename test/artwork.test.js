@@ -95,7 +95,7 @@ const itunesHit = (name) => ({
     if (url.indexOf('itunes.apple.com') >= 0) return jsonResponse(itunesHit('The Lighthouse Cat'));
     return imageResponse(PNG, 'image/png');
   });
-  const found = await happy.find('03_the-lighthouse-cat (unabridged).mp3', 'Ida');
+  const found = (await happy.find('03_the-lighthouse-cat (unabridged).mp3', 'Ida')).image;
   check('a matching result yields artwork', !!found && found.source, 'itunes');
   check('the bytes are fetched, not linked', found && found.data.byteLength, PNG.length);
   check('the content type is kept', found && found.type, 'image/png');
@@ -110,7 +110,9 @@ const itunesHit = (name) => ({
     return imageResponse();
   });
   check('a result that does not look like the story is refused',
-    await wrong.find('Whalesong'), null);
+    (await wrong.find('Whalesong')).image, null);
+  check('and that counts as searched, so it is not retried forever',
+    (await wrong.find('Whalesong')).searched, true);
 
   // iTunes has no audiobook for most home recordings; Open Library might.
   const secondSource = load((url) => {
@@ -122,39 +124,47 @@ const itunesHit = (name) => ({
     }
     return imageResponse();
   });
-  const second = await secondSource.find('The Gruffalo');
+  const second = (await secondSource.find('The Gruffalo')).image;
   check('Open Library is tried when iTunes has nothing', second && second.source, 'openlibrary');
 
   /* --------------------------------------------------- every failure is null */
-  check('a rejected search resolves to null',
-    await load(() => Promise.reject(new Error('CORS'))).find('The Gruffalo'), null);
+  /* A source that never answered must not be recorded as a miss, or a story
+   * imported with no signal would be written off as having no cover for good. */
+  const blocked = await load(() => Promise.reject(new Error('CORS'))).find('The Gruffalo');
+  check('a rejected search yields no cover', blocked.image, null);
+  check('and is not counted as searched', blocked.searched, false);
 
-  check('a non-ok response resolves to null',
-    await load(() => Promise.resolve({ ok: false, headers: { get: () => '' } })).find('The Gruffalo'), null);
+  check('a non-ok response yields no cover',
+    (await load(() => Promise.resolve({ ok: false, headers: { get: () => '' } })).find('The Gruffalo')).image, null);
 
-  check('malformed JSON resolves to null',
-    await load(() => Promise.resolve({ ok: true, headers: { get: () => '' }, json: () => Promise.reject(new Error('bad')) }))
-      .find('The Gruffalo'), null);
+  check('malformed JSON yields no cover',
+    (await load(() => Promise.resolve({ ok: true, headers: { get: () => '' }, json: () => Promise.reject(new Error('bad')) }))
+      .find('The Gruffalo')).image, null);
 
   const notAnImage = load((url) => {
     if (url.indexOf('itunes.apple.com') >= 0) return jsonResponse(itunesHit('The Gruffalo'));
     return Promise.resolve({ ok: true, headers: { get: () => 'text/html' }, arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) });
   });
-  check('an HTML error page is not treated as a cover', await notAnImage.find('The Gruffalo'), null);
+  check('an HTML error page is not treated as a cover', (await notAnImage.find('The Gruffalo')).image, null);
 
   const huge = load((url) => {
     if (url.indexOf('itunes.apple.com') >= 0) return jsonResponse(itunesHit('The Gruffalo'));
     return imageResponse(Buffer.alloc(4 * 1024 * 1024), 'image/jpeg');
   });
-  check('an oversized image is refused', await huge.find('The Gruffalo'), null);
+  check('an oversized image is refused', (await huge.find('The Gruffalo')).image, null);
 
   let touched = false;
   const offline = load(() => { touched = true; return imageResponse(); }, false);
-  check('offline does not reach the network', await offline.find('The Gruffalo'), null);
+  const whileOffline = await offline.find('The Gruffalo');
+  check('offline yields no cover', whileOffline.image, null);
   check('and really did not call fetch', touched, false);
+  check('and is not counted as searched, so it retries when back online',
+    whileOffline.searched, false);
 
-  check('a title with nothing usable in it is skipped',
-    await happy.find('01 - 02 - 03.mp3'), null);
+  const hopeless = await happy.find('01 - 02 - 03.mp3');
+  check('a title with nothing usable in it is skipped', hopeless.image, null);
+  check('and is not retried, because no title will ever appear',
+    hopeless.searched, true);
 
   console.log(failures ? `\n${failures} failing` : '\nAll artwork tests passed.');
   process.exit(failures ? 1 : 0);

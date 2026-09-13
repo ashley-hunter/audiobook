@@ -218,9 +218,16 @@ window.App = window.App || {};
     if (story.hasArt || story.artTried) return Promise.resolve(false);
     if (App.settings.get().artwork === false) return Promise.resolve(false);
 
-    return App.artwork.find(story.title, story.narrator).then(function (found) {
+    return App.artwork.find(story.title, story.narrator).then(function (result) {
+      var found = result && result.image;
+      if (!found) {
+        // Nothing answered, so nothing is known yet. Leaving artTried unset is
+        // what lets a story imported with no signal pick up a cover later.
+        if (!result || !result.searched) return false;
+        story.artTried = true;
+        return App.store.patchStory(story.id, { artTried: true }).then(falseValue);
+      }
       story.artTried = true;
-      if (!found) return App.store.patchStory(story.id, { artTried: true }).then(falseValue);
       story.hasArt = true;
       return App.store.putArt(story.id, found.data, found.type)
         .then(function () {
@@ -1029,6 +1036,7 @@ window.App = window.App || {};
   // Used by test/browser.test.js.
   App.debug = {
     stories: function () { return stories; },
-    reclaimOrphanChunks: reclaimOrphanChunks
+    reclaimOrphanChunks: reclaimOrphanChunks,
+    findArtwork: findArtwork
   };
 })();

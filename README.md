@@ -66,6 +66,16 @@ broken with no signal. Stories that miss out - offline at the time, or imported
 before this existed - are retried once per launch, capped and spaced out. The
 switch is "Find cover art online" in parent controls.
 
+"Nothing found" and "could not look" are kept apart. A miss is recorded so the
+same hopeless title is not searched on every launch, but only once a source has
+actually answered - otherwise a story imported with no signal would be written
+off as having no cover for good.
+
+One thing this repository cannot prove: both hosts have to allow cross-origin
+reads for the bytes to be storable. CI has no route to either, so the tests fake
+them. If either refuses in practice, the lookup degrades to the generated cover
+rather than breaking, and the first real import on a phone is what settles it.
+
 **Playing back** (`assets/js/media.js`, `sw.js`)
 Two routes, tried in order:
 

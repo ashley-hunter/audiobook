@@ -532,6 +532,27 @@ function writeWav(file, seconds) {
     hasArt: App.debug.stories()[0].hasArt,
   }));
   check('the switch stops the lookup', off.calls === 0 && !off.hasArt, JSON.stringify(off));
+
+  /* A story imported with no signal must stay eligible: recording a miss when
+   * nothing answered would write it off as having no cover for good. */
+  const retryable = await art.evaluate(async () => {
+    App.settings.set({ artwork: true });
+    App.settings.flush();
+    const story = App.debug.stories()[0];
+    await App.store.patchStory(story.id, { hasArt: false, artTried: false });
+    story.hasArt = false;
+    story.artTried = false;
+
+    const saved = window.fetch;
+    window.fetch = function () { return Promise.reject(new TypeError('Failed to fetch')); };
+    await App.debug.findArtwork(story);
+    window.fetch = saved;
+
+    const row = await App.store.getStory(story.id);
+    return { artTried: row.artTried, hasArt: row.hasArt };
+  });
+  check('an unreachable lookup is not recorded as a miss',
+    !retryable.artTried && !retryable.hasArt, JSON.stringify(retryable));
   check('no JavaScript errors during artwork lookup', artErrors.length === 0, artErrors.join(' | '));
 
   await browser.close();

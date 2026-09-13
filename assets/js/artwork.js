@@ -7,7 +7,7 @@
  * Three rules shape the whole module:
  *
  *   1. It never blocks an import. The audio is already saved by the time this
- *      runs, and every failure path resolves to null rather than rejecting.
+ *      runs, and every failure path resolves rather than rejecting.
  *   2. A wrong cover is worse than no cover. A result has to actually look like
  *      the story before its artwork is taken, so "Whalesong" does not come back
  *      with a heavy metal album.
@@ -16,8 +16,8 @@
  *      place this app is meant to work.
  *
  * Both hosts have to allow cross-origin reads for rule 3 to hold. If either
- * refuses, the fetch rejects, this returns null and the generated striped cover
- * stands - the same as being offline.
+ * refuses, the fetch rejects, no cover is returned and the generated striped
+ * cover stands - the same as being offline.
  */
 window.App = window.App || {};
 
@@ -143,13 +143,13 @@ App.artwork = (function () {
           best = results[i];
         }
       }
-      if (!best || bestScore < MIN_MATCH || !best.artworkUrl100) return null;
+      if (!best || bestScore < MIN_MATCH || !best.artworkUrl100) return searched(null);
       return getImage(upscale(best.artworkUrl100)).then(function (image) {
         image.source = 'itunes';
         image.matched = best.collectionName || best.trackName;
-        return image;
-      });
-    });
+        return searched(image);
+      }, function () { return searched(null); });
+    }, unreachable);
   }
 
   function fromOpenLibrary(title) {
@@ -167,34 +167,45 @@ App.artwork = (function () {
           best = docs[i];
         }
       }
-      if (!best || bestScore < MIN_MATCH) return null;
+      if (!best || bestScore < MIN_MATCH) return searched(null);
       return getImage(COVERS + best.cover_i + '-L.jpg').then(function (image) {
         image.source = 'openlibrary';
         image.matched = best.title;
-        return image;
-      });
-    });
+        return searched(image);
+      }, function () { return searched(null); });
+    }, unreachable);
   }
 
   /* -------------------------------------------------------------- public */
 
-  /* Resolves { data, type, source, matched } or null. Never rejects: a missing
-   * cover is not a failure worth interrupting anything for.
+  /* "Nothing found" and "could not look" need telling apart. A story imported
+   * on a phone with no signal must not be written off as having no cover: the
+   * caller records a miss so it is not retried forever, and that is only right
+   * once a source has actually answered.
+   */
+  function searched(image) { return { image: image, searched: true }; }
+  function unreachable() { return { image: null, searched: false }; }
+
+  /* Resolves { image, searched }, where image is { data, type, source, matched }
+   * or null. Never rejects: a missing cover is not worth interrupting anything.
    */
   function find(title, artist) {
-    if (typeof fetch !== 'function') return Promise.resolve(null);
-    if (navigator.onLine === false) return Promise.resolve(null);
+    if (typeof fetch !== 'function') return Promise.resolve(unreachable());
+    if (navigator.onLine === false) return Promise.resolve(unreachable());
 
     var cleaned = clean(title);
-    if (words(cleaned).length === 0) return Promise.resolve(null);
+    // No amount of retrying will make a title of track numbers searchable.
+    if (words(cleaned).length === 0) return Promise.resolve(searched(null));
 
-    return fromItunes(cleaned, artist)
-      ['catch'](function () { return null; })
-      .then(function (found) {
-        if (found) return found;
-        return fromOpenLibrary(cleaned)['catch'](function () { return null; });
-      })
-      ['catch'](function () { return null; });
+    return fromItunes(cleaned, artist)['catch'](unreachable).then(function (first) {
+      if (first.image) return first;
+      return fromOpenLibrary(cleaned)['catch'](unreachable).then(function (second) {
+        return {
+          image: second.image,
+          searched: first.searched || second.searched
+        };
+      });
+    })['catch'](unreachable);
   }
 
   return {
