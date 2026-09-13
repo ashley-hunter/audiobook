@@ -85,7 +85,24 @@ function writeWav(file, seconds) {
 
   check('boots cleanly', errors.length === 0, errors.join(' | '));
   check('empty state is shown', await page.locator('#library-empty').isVisible());
-  check('add button is hidden while locked', !(await page.locator('#add-btn').isVisible()));
+
+  /* The lock defaults on, but an empty library has nothing to protect. If the
+   * Add route is gone here, a fresh install is a dead end: the empty state
+   * invites you to add a story and the only way in is a hidden gesture. */
+  check('locked but empty still offers the header Add',
+    await page.locator('#add-btn').isVisible());
+  check('locked but empty offers an Add button in the empty state',
+    await page.locator('.empty-add').isVisible());
+  check('the empty state does not point at a button that is not there',
+    (await page.locator('#library-empty').textContent()).indexOf('Tap Add') < 0);
+
+  // and it has to actually work, not just be present
+  await page.locator('.empty-add').click();
+  await page.waitForTimeout(400);
+  check('the empty state Add button opens the import sheet',
+    await page.locator('#add').evaluate((n) => n.className.indexOf('is-open') >= 0));
+  await page.locator('#add-close').click();
+  await page.waitForTimeout(400);
 
   /* ------------------------------------------- hold the moon for 3 seconds */
   const moon = await page.locator('#moon-btn').boundingBox();
@@ -114,8 +131,17 @@ function writeWav(file, seconds) {
 
   await page.locator('#add-close').click();
   await page.locator('#parent-close').click();
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(1800);
   check('library shows one row', (await page.locator('#library-rows .row').count()) === 1);
+
+  check('the lock applies once there is a library to protect',
+    !(await page.locator('#add-btn').isVisible()));
+  const taught = await page.evaluate(() => ({
+    flag: App.settings.get().taughtParentGate,
+    toast: document.getElementById('toast').textContent,
+  }));
+  check('the first import says where the Add button went',
+    taught.flag === true && taught.toast.indexOf('hold the moon') >= 0, JSON.stringify(taught));
 
   /* --------------------------------------------- service worker media route */
   check('media route is usable', (await page.evaluate(() => App.media.probe())) === true);

@@ -192,7 +192,10 @@ Places where the prototype could not be followed literally, and why:
   have done nothing. The replacement is real and defaults to on.
 - **"Lock to the library" became "Only parents can add stories"**, which is what
   it actually does: it hides the Add button from the child's screens, leaving
-  import available only through parent controls.
+  import available only through parent controls. It defaults on, but an empty
+  library has nothing to protect, so the Add route always shows while there are
+  no stories - otherwise a fresh install is a dead end, inviting you to add a
+  story with no button to do it. The first import says where the button went.
 - **Bedtime, stories per night and child's name are editable.** The prototype
   draws them as static rows. A settings row that does nothing is worse than one
   that works, so they use native controls and feed the home screen's subtitle.

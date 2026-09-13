@@ -16,7 +16,8 @@ App.settings = (function () {
     lock: true,
     dim: true,
     resume: true,
-    showOurs: true
+    showOurs: true,
+    taughtParentGate: false
   };
 
   var current = null;
