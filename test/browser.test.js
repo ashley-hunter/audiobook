@@ -59,7 +59,7 @@ function writeWav(file, seconds) {
 }
 
 (async () => {
-  const server = require('./serve.js');
+  const server = require('./serve.js')();
   await new Promise((resolve) => server.listen(PORT, resolve));
 
   const launch = {};

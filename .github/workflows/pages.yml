@@ -1,46 +1,105 @@
-name: Deploy to GitHub Pages
+name: Test and deploy
 
-# Publishes the app so it can be installed on a phone. Does nothing until Pages
-# is enabled under Settings -> Pages -> Source: GitHub Actions.
+# Runs the checks on every push and pull request, and publishes to GitHub Pages
+# from the default branch.
+#
+# Publishing needs Pages turned on once, by hand:
+#   Settings -> Pages -> Build and deployment -> Source: GitHub Actions
+# Until that is done the deploy job fails with "Pages site not found", which is
+# the only setup step that cannot be automated from here.
 
 on:
   push:
-    branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: true
 
 jobs:
-  check:
+  test:
+    name: Checks and tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      # Playwright pins a browser build per release, so the cache key is the
+      # resolved version rather than the lockfile hash.
+      - name: Resolve the Playwright version
+        id: pw
+        run: echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the browser cache
+        id: browser-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+      - name: Install Chromium
+        if: steps.browser-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Install system dependencies
+        if: steps.browser-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      # An iPhone 6 tops out at Safari 12, so anything newer has to be behind a
+      # detection in assets/js/capabilities.js.
       - name: Safari 12 compatibility check
-        run: node scripts/check-ios12.js
+        run: npm run check
+
       - name: Tag reader tests
-        run: node test/tags.test.js
+        run: npm run test:tags
+
+      - name: Browser tests
+        run: npm run test:browser
+
+      # Builds the real artifact and exercises it the way Pages serves it: from
+      # a subdirectory, then with the network switched off.
+      - name: Deployment shape and offline tests
+        run: npm run test:pages
 
   deploy:
-    needs: check
+    name: Deploy to Pages
+    needs: test
+    # Only the default branch publishes, whatever it happens to be called.
+    if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false   # never cancel a deploy that is already going out
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Copies only what belongs on a phone, and refuses to publish a site whose
+      # script tags and service worker shell list disagree with each other.
+      - name: Build the site
+        run: node scripts/build-site.js
+
       - uses: actions/configure-pages@v5
+
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
+          path: _site
+
       - id: deployment
         uses: actions/deploy-pages@v4

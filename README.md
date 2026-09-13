@@ -219,13 +219,63 @@ assets/js/player.js         playback, sleep timer, fade, checkpoints
 assets/js/ui.js             DOM and formatting helpers
 assets/js/app.js            screen wiring
 scripts/check-ios12.js      the Safari 12 guard
+scripts/build-site.js       assembles _site/, and refuses an inconsistent one
 scripts/make-icons.py       regenerates the icon set (stdlib only)
-test/                       tag unit tests, end-to-end browser tests, dev server
+test/                       tag, browser and deployment tests, plus the dev server
+.github/workflows/pages.yml checks on every push, Pages deploy from default
 ```
 
 ---
 
-## Installing it on the phone
+## Deploying
+
+`.github/workflows/pages.yml` runs the checks on every push and pull request,
+and publishes to GitHub Pages from the default branch.
+
+- **`npm run build`** assembles `_site/` with only what belongs on a phone:
+  `index.html`, `manifest.webmanifest`, `sw.js` and `assets/`. The tests, build
+  scripts and vendored design prototypes stay behind.
+- The build **refuses to publish an inconsistent site**: a script tag pointing
+  at a file that is not there, an absolute path that would break on a project
+  site, or a file the page loads that is missing from the service worker's
+  shell list. That last one only shows up as an app that is half broken with no
+  signal, which is the worst way to find out.
+- The deploy job is gated on `github.event.repository.default_branch` rather
+  than a hardcoded `main`, so it keeps working whatever the default branch is
+  called now or later.
+
+### Two things to do by hand first
+
+**1. Turn Pages on.** Settings → Pages → Build and deployment → Source:
+**GitHub Actions**. Nothing here can do this for you, and until it is done the
+deploy job fails with "Pages site not found". The test job still runs.
+
+**2. This repository is private, which Pages will refuse on a free account.**
+Publishing a private repository to Pages needs GitHub Pro, Team or Enterprise.
+On a free plan the deploy job will fail no matter how the workflow is written,
+and the fix is to make the repository public. Nothing sensitive is published
+either way - the site is the app shell, and every story a child adds stays in
+that phone's own storage and never leaves it. Worth knowing that on Pro the
+published site is still publicly reachable by anyone with the URL; only
+Enterprise can restrict who can load it.
+
+### The URL
+
+A project site is served from a subdirectory,
+`https://<user>.github.io/<repo>/`, not the root of a domain. Every path in the
+app is relative for that reason, and `npm run test:pages` builds the real
+artifact, serves it from a subdirectory and checks that the service worker
+claims the right scope, that the media route resolves, and that the whole thing
+still plays with the network switched off.
+
+To try that shape locally:
+
+```
+npm run build
+node test/serve.js 8777 /audiobook/     # http://127.0.0.1:8777/audiobook/
+```
+
+### Installing it on the phone
 
 The app has to be served over **HTTPS** - service workers require a secure
 context, and without one there is no offline shell and no streaming route.
@@ -235,15 +285,11 @@ On the phone: open the URL in **Safari** (not Chrome - only Safari can install t
 the Home Screen), then Share → Add to Home Screen. Launching from that icon is
 what gives the app its full screen and its own storage.
 
-`.github/workflows/pages.yml` publishes the repository to GitHub Pages on every
-push to `main`. It does nothing until Pages is enabled for the repository under
-Settings → Pages → Source: GitHub Actions.
-
 ---
 
 ## Testing
 
-`npm test` runs three things:
+`npm test` runs four things:
 
 - `scripts/check-ios12.js` - the syntax and CSS floor.
 - `test/tags.test.js` - the tag reader against hand-built ID3 and MP4 fixtures,
