@@ -122,6 +122,16 @@ function writeWav(file, seconds) {
   await page.waitForTimeout(400);
   check('the empty state Add button opens the import sheet',
     await page.locator('#add').evaluate((n) => n.className.indexOf('is-open') >= 0));
+
+  /* Tapping is the thing that was broken on the phone, and setInputFiles - which
+   * every other import here uses - skips the tap entirely. WebKit will not
+   * always open a picker for an input it is not rendering, so this drives the
+   * real gesture and waits for a real file chooser. */
+  const chooser = page.waitForEvent('filechooser', { timeout: 5000 }).then(() => true, () => false);
+  await page.locator('#dropzone').click();
+  check('tapping the dropzone opens a file chooser', await chooser);
+  check('the file input is rendered, not display:none',
+    (await page.locator('#file-input').evaluate((n) => getComputedStyle(n).display)) !== 'none');
   await page.locator('#add-close').click();
   await page.waitForTimeout(400);
 
@@ -543,6 +553,50 @@ function writeWav(file, seconds) {
     orphans.before.indexOf('ghost-story') >= 0, JSON.stringify(orphans.before));
   check('and swept up rather than leaking storage',
     orphans.after.indexOf('ghost-story') < 0, JSON.stringify(orphans.after));
+
+  /* ------------------------------------ a deploy landing mid-interaction ---
+     A new worker claims the page the moment it activates, and the app reloads
+     to pick up the new release. Reloading is only ever an optimisation - the
+     next launch gets the new files regardless - so it must never happen while
+     someone is part way through something. It did, and on the phone it took
+     the file picker with it: tapping the dropzone appeared to do nothing. */
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(900);
+
+  const yanked = await page.evaluate(async () => {
+    try { sessionStorage.removeItem('bedtime:swReloaded'); } catch (e) { void e; }
+    document.getElementById('add-btn').click();          // counts as a real tap
+    await new Promise((r) => setTimeout(r, 300));
+    const openBefore = document.getElementById('add').className.indexOf('is-open') >= 0;
+    window.__survived = true;
+    navigator.serviceWorker.dispatchEvent(new Event('controllerchange'));
+    await new Promise((r) => setTimeout(r, 1200));
+    return {
+      openBefore: openBefore,
+      survived: !!window.__survived,
+      stillOpen: document.getElementById('add').className.indexOf('is-open') >= 0,
+    };
+  });
+  check('a deploy does not reload the page out from under an open sheet',
+    yanked.openBefore && yanked.survived && yanked.stillOpen, JSON.stringify(yanked));
+
+  // But an app nobody has touched yet still takes the update straight away,
+  // or a deploy would never reach the phone until something else forced it.
+  await page.locator('#add-close').click();
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(900);
+  // Dispatched from a timer so this call returns before the reload it causes,
+  // which would otherwise tear down the context it is running in.
+  await page.evaluate(() => {
+    try { sessionStorage.removeItem('bedtime:swReloaded'); } catch (e) { void e; }
+    window.__survived = true;
+    setTimeout(function () {
+      navigator.serviceWorker.dispatchEvent(new Event('controllerchange'));
+    }, 0);
+  });
+  await page.waitForTimeout(1500);
+  const landed = await page.evaluate(() => !window.__survived).catch(() => true);
+  check('but an untouched app still reloads to pick the update up', landed);
 
   check('no JavaScript errors at any point', errors.length === 0, errors.join(' | '));
 

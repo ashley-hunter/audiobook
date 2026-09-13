@@ -741,7 +741,21 @@ input[type=time].field::-webkit-date-and-time-value { text-align: right; }
   border-right: 9px solid transparent;
 }
 .dz-note { margin-top: 6px; font-size: 14px; color: var(--paper-55); line-height: 1.5; }
-.dropzone input[type=file] { display: none; }
+/* Hidden by size rather than by display:none. WebKit will not always open the
+ * picker for a file input it is not rendering, and the whole control here is a
+ * label wrapped round one - so an input that is technically laid out, just 0x0
+ * and transparent, is the difference between the dropzone working and the tap
+ * doing nothing. flex:none keeps the label's flex column from stretching it. */
+.dropzone input[type=file] {
+  width: 0;
+  height: 0;
+  flex: none;
+  opacity: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+}
 .dz-empty { margin-top: 26px; text-align: center; font-size: 15px; color: rgba(26, 23, 48, .5); line-height: 1.6; padding: 0 20px; }
 
 .import {

@@ -30,6 +30,7 @@ window.App = window.App || {};
   /* ==================================================================== boot */
 
   function boot() {
+    watchForInteraction();   // before the async work: a tap during boot counts
     registerServiceWorker();
 
     App.store.open()
@@ -100,10 +101,43 @@ window.App = window.App || {};
    * a bedtime story, and a reload part way through an import would orphan the
    * chunks already written, since the story row is only saved at the end.
    */
+  /* Reloading is only ever an optimisation. The new worker already controls
+   * this page, so the next launch picks up the new release whether this reload
+   * happens or not - at worst the update lands one launch later. That makes
+   * anything the user is part way through worth more than landing it sooner: a
+   * page that reloads under a finger loses whatever was open, and on iOS it
+   * takes the file picker with it, so tapping the dropzone appears to do
+   * nothing at all.
+   */
   function safeToReload() {
     if (importing) return false;
-    return !App.player.currentStory();   // not just "not playing": a paused
-                                         // story is still someone's place in it
+    if (App.player.currentStory()) return false;   // not just "not playing": a
+                                                   // paused story is still
+                                                   // someone's place in it
+    if (interacted) return false;
+    return !anythingOpen();
+  }
+
+  var interacted = false;
+
+  function noteInteraction() { interacted = true; }
+
+  function watchForInteraction() {
+    // Capture, so a handler that stops propagation cannot hide the tap.
+    document.addEventListener('touchstart', noteInteraction, true);
+    document.addEventListener('mousedown', noteInteraction, true);
+    document.addEventListener('keydown', noteInteraction, true);
+  }
+
+  function anythingOpen() {
+    var ids = ['player', 'add', 'parent', 'sheet', 'confirm'];
+    for (var i = 0; i < ids.length; i++) {
+      var node = $(ids[i]);
+      if (!node) continue;
+      var name = node.className || '';
+      if (name.indexOf('is-open') >= 0 || name.indexOf('is-on') >= 0) return true;
+    }
+    return false;
   }
 
   /* On Safari 12 updateViaCache is ignored, so an HTTP cached sw.js and a fresh

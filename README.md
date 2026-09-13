@@ -175,11 +175,26 @@ and builds a fresh one. Where `volume` is writable (Android, desktop) it ramps
 that instead. If neither works, the timer stops the story without a fade rather
 than failing.
 
+**An update must not land on a finger.** A new worker claims the page as soon
+as it activates, and the app reloads to pick up the new release. That reload is
+only ever an optimisation - the next launch gets the new files either way - so
+it is skipped entirely once the app has been touched, or while anything is open,
+playing or importing. It used to fire seconds after boot, which is exactly when
+someone is reaching for Add: the sheet vanished and, on iOS, took the file
+picker with it, so tapping the dropzone appeared to do nothing.
+
 **Storage can still be taken away.** `storage.persist()` is a request, not a
 guarantee, and Safari 12 has no such request at all. Either way the app checks
 every story's first chunk at startup and marks the ones whose audio has gone
 with "Needs adding again - the phone cleared it", rather than failing at the
 moment a child presses play. Expect a permission prompt past roughly 50 MB.
+
+**A file input must stay rendered.** WebKit will not reliably open the picker
+for an input hidden with `display: none`, and the dropzone is a `<label>`
+wrapped round one, so the input is hidden by being 0x0 and transparent instead.
+The suites drive the real tap and wait for a real file chooser, because
+`setInputFiles` - which every other import test uses - skips the tap entirely
+and would not notice this breaking.
 
 **The file picker only sees Files and iCloud Drive.** It cannot reach the Music
 library or anything with DRM from Apple Music. The `accept` list is deliberately
