@@ -628,8 +628,42 @@ window.App = window.App || {};
     });
   }
 
+  /* An in-app confirmation rather than window.confirm, which a Home Screen web
+   * app renders as a system alert captioned with the site's origin.
+   */
+  function askConfirm(options, onConfirm) {
+    var node = $('confirm');
+    ui.text($('confirm-title'), options.title);
+    ui.text($('confirm-body'), options.body || '');
+    ui.text($('confirm-yes'), options.confirmLabel || 'Remove');
+    ui.text($('confirm-no'), options.cancelLabel || 'Cancel');
+
+    function close() {
+      ui.toggleClass(node, 'is-on', false);
+      node.setAttribute('aria-hidden', 'true');
+      $('confirm-yes').onclick = null;
+      $('confirm-no').onclick = null;
+      $('confirm-scrim').onclick = null;
+    }
+    $('confirm-yes').onclick = function () { close(); onConfirm(); };
+    $('confirm-no').onclick = close;
+    $('confirm-scrim').onclick = close;
+
+    ui.toggleClass(node, 'is-on', true);
+    node.setAttribute('aria-hidden', 'false');
+  }
+
   function removeStory(story) {
-    if (!window.confirm('Remove "' + story.title + '" from this phone?')) return;
+    askConfirm({
+      title: 'Remove \u201c' + story.title + '\u201d?',
+      body: 'The audio is deleted from this phone, freeing ' + ui.bytes(story.size) +
+            '. You can add the file again later.',
+      confirmLabel: 'Remove',
+      cancelLabel: 'Keep it'
+    }, function () { deleteStoryNow(story); });
+  }
+
+  function deleteStoryNow(story) {
     if (App.player.currentStory() && App.player.currentStory().id === story.id) App.player.pause();
     App.media.release(story.id);
     App.media.forgetArt(story.id);

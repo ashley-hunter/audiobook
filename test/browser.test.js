@@ -274,14 +274,44 @@ function writeWav(file, seconds) {
   });
   check('blob fallback reassembles the file', blobBytes === FIXTURE_BYTES, 'bytes=' + blobBytes);
 
-  /* ------------------------------------------------------------- removal */
-  await page.evaluate(() => {
-    const s = App.debug.stories()[0];
-    return App.store.deleteStory(s.id);
-  });
+  /* ---------------------------------------------- removal, through the UI */
+  const moon2 = await page.locator('#moon-btn').boundingBox();
+  await page.mouse.move(moon2.x + moon2.width / 2, moon2.y + moon2.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(3400);
+  await page.mouse.up();
+  await page.waitForTimeout(500);
+
+  check('parent controls list what is stored',
+    (await page.locator('#stored-list .remove').count()) === 1);
+
+  // Nothing destructive happens without a confirmation, and "keep it" keeps it.
+  await page.locator('#stored-list .remove').first().click();
+  await page.waitForTimeout(400);
+  check('remove asks first',
+    await page.locator('#confirm').evaluate((n) => n.className.indexOf('is-on') >= 0));
+  const confirmBody = await page.locator('#confirm-body').textContent();
+  check('the confirmation names the story and the space it frees',
+    (await page.locator('#confirm-title').textContent()).indexOf('Sleepy Foxes') >= 0 &&
+    confirmBody.indexOf('MB') >= 0, confirmBody);
+
+  await page.locator('#confirm-no').click();
+  await page.waitForTimeout(400);
+  check('declining keeps the story', (await page.evaluate(() => App.debug.stories().length)) === 1);
+  check('declining closes the confirmation',
+    !(await page.locator('#confirm').evaluate((n) => n.className.indexOf('is-on') >= 0)));
+
+  await page.locator('#stored-list .remove').first().click();
+  await page.waitForTimeout(300);
+  await page.locator('#confirm-yes').click();
+  await page.waitForTimeout(1500);
+  check('confirming removes the story', (await page.evaluate(() => App.debug.stories().length)) === 0);
+  check('and takes its audio with it',
+    (await page.evaluate(() => App.store.chunkOwners())).length === 0);
+
   await page.reload({ waitUntil: 'networkidle' });
   await page.waitForTimeout(1000);
-  check('removal empties the library', (await page.evaluate(() => App.debug.stories().length)) === 0);
+  check('removal survives a reload', (await page.evaluate(() => App.debug.stories().length)) === 0);
   check('empty state returns', await page.locator('#library-empty').isVisible());
 
   /* An import writes chunks before the story row, so anything that kills the

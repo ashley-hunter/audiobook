@@ -210,8 +210,13 @@ Places where the prototype could not be followed literally, and why:
 - **Bedtime, stories per night and child's name are editable.** The prototype
   draws them as static rows. A settings row that does nothing is worse than one
   that works, so they use native controls and feed the home screen's subtitle.
-- **Removing a story was added,** under "Storage on this phone". Storage is
-  finite and the prototype has no way to reclaim it.
+- **Removing a story was added,** under "Storage on this phone" in parent
+  controls. Storage is finite and the prototype has no way to reclaim it. It
+  asks first, naming the story and the space it frees, using an in-app dialog
+  rather than `window.confirm` - which a Home Screen web app renders as a system
+  alert captioned with the site's origin. Removal stays behind the moon hold
+  even though adding does not: adding a wrong file is a nuisance, deleting the
+  right one is not.
 - **The player has no seek control,** matching the prototype. A child's player
   deliberately has nothing to scrub.
 - **The iOS device frame** (`ios-frame.jsx`) is prototype chrome, not part of the
