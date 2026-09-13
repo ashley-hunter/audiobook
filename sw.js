@@ -31,6 +31,7 @@ var SHELL = [
   'assets/js/store.js',
   'assets/js/settings.js',
   'assets/js/id3.js',
+  'assets/js/artwork.js',
   'assets/js/media.js',
   'assets/js/importer.js',
   'assets/js/player.js',

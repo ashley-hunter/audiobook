@@ -15,6 +15,7 @@ App.settings = (function () {
     sleepMinutes: 20,
     dim: true,
     resume: true,
+    artwork: true,
     showOurs: true
   };
 

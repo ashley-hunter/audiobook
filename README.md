@@ -16,7 +16,7 @@ show which of them the phone in your hand actually has.
 ```
 npm install                 # playwright, for the browser tests only
 npm run serve               # http://127.0.0.1:8777
-npm test                    # compatibility check + tag tests + browser tests
+npm test                    # compatibility check, unit tests, browser tests
 ```
 
 There is no build step. The files you edit are the files that ship.
@@ -54,6 +54,17 @@ were unreliable in the Safari 12 era. Title, narrator and embedded cover art are
 read from the file's own tags (`assets/js/id3.js` handles ID3v2.2/2.3/2.4 and the
 iTunes atoms in M4A/M4B, including the common case of an M4B keeping `moov` at
 the very end of the file). Duration comes from the decoder, not from a guess.
+
+**Cover art** (`assets/js/artwork.js`)
+Embedded art from the file's own tags is always preferred. Failing that, the
+iTunes Search API is asked, then Open Library. Three rules shape it: it never
+blocks an import, because the audio is already stored by the time it runs and
+every failure resolves to null; a result has to actually look like the story
+before its artwork is taken, because a wrong cover is worse than none; and the
+bytes are fetched and stored rather than linked, so the library does not look
+broken with no signal. Stories that miss out - offline at the time, or imported
+before this existed - are retried once per launch, capped and spaced out. The
+switch is "Find cover art online" in parent controls.
 
 **Playing back** (`assets/js/media.js`, `sw.js`)
 Two routes, tried in order:
@@ -235,6 +246,7 @@ assets/js/capabilities.js   every post-floor API, detected with its fallback
 assets/js/store.js          IndexedDB: stories, chunks, art, settings
 assets/js/settings.js       parent settings + the weekly listening record
 assets/js/id3.js            ID3v2 and MP4 tag reading
+assets/js/artwork.js        cover lookup: iTunes Search, then Open Library
 assets/js/media.js          picks the playback route, caches object URLs
 assets/js/importer.js       chunked copy into storage
 assets/js/player.js         playback, sleep timer, fade, checkpoints
@@ -331,6 +343,10 @@ own storage.
 - `scripts/check-ios12.js` - the syntax and CSS floor.
 - `test/tags.test.js` - the tag reader against hand-built ID3 and MP4 fixtures,
   including a truncated tag and an M4B with its metadata past the 1 MiB head.
+- `test/artwork.test.js` - the cover lookup with the network faked: the query
+  built from a messy filename, the refusal to take a result that does not match,
+  the size and content-type guards, and that every failure path ends in null
+  rather than an exception during an import.
 - `test/browser.test.js` - a real import, range requests that straddle a chunk
   boundary, the 4 MiB window cap, playback, the sleep timer pausing with the
   audio, persistence across a reload, and the Blob fallback. It then runs a

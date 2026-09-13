@@ -45,6 +45,7 @@ window.App = window.App || {};
         renderAll();
         App.caps.idle(verifyStorage, 3000);
         App.caps.idle(reclaimOrphanChunks, 8000);
+        App.caps.idle(sweepArtwork, 12000);
         refreshStorageFacts();
         wireInstallRow();
         wireTeardown();
@@ -206,6 +207,52 @@ window.App = window.App || {};
       })['catch'](step);
     }
     step();
+  }
+
+  /* Fills in a cover for a story that arrived without embedded art. Runs after
+   * the audio is already stored, so a slow or failed lookup costs nothing but
+   * the striped cover the story would have had anyway. `artTried` stops the
+   * same miss being looked up again on every launch.
+   */
+  function findArtwork(story) {
+    if (story.hasArt || story.artTried) return Promise.resolve(false);
+    if (App.settings.get().artwork === false) return Promise.resolve(false);
+
+    return App.artwork.find(story.title, story.narrator).then(function (found) {
+      story.artTried = true;
+      if (!found) return App.store.patchStory(story.id, { artTried: true }).then(falseValue);
+      story.hasArt = true;
+      return App.store.putArt(story.id, found.data, found.type)
+        .then(function () {
+          return App.store.patchStory(story.id, { hasArt: true, artTried: true });
+        })
+        .then(function () {
+          App.media.forgetArt(story.id);
+          renderAll();
+          return true;
+        });
+    })['catch'](function () { return false; });
+  }
+
+  function falseValue() { return false; }
+
+  /* Stories imported before this existed, or added while offline, get a cover
+   * the next time there is a connection. One at a time and capped per launch,
+   * so a library of fifty does not arrive at the search API all at once.
+   */
+  function sweepArtwork() {
+    if (App.settings.get().artwork === false) return;
+    var pending = stories.filter(function (s) {
+      return !s.hasArt && !s.artTried && !s.missing;
+    }).slice(0, 8);
+
+    function step() {
+      if (!pending.length) return null;
+      return findArtwork(pending.shift()).then(function () {
+        return new Promise(function (resolve) { setTimeout(resolve, 1200); });
+      }).then(step);
+    }
+    Promise.resolve().then(step)['catch'](function () { return null; });
   }
 
   /* Deletes chunks left behind by an import that never finished. Skipped while
@@ -552,11 +599,12 @@ window.App = window.App || {};
     var host = $('toggles');
     var rows = [
       { key: 'dim', label: 'Screen dims while playing' },
-      { key: 'resume', label: 'Remember where each story stopped' }
+      { key: 'resume', label: 'Remember where each story stopped' },
+      { key: 'artwork', label: 'Find cover art online' }
     ];
     ui.clear(host);
     rows.forEach(function (row) {
-      var on = row.key === 'resume' ? settings.resume !== false : !!settings[row.key];
+      var on = settings[row.key] !== false;
       var button = ui.el('button', 'card-row');
       button.type = 'button';
       button.appendChild(document.createTextNode(row.label));
@@ -727,6 +775,7 @@ window.App = window.App || {};
         // Browsers weigh engagement, so a request right after a real import is
         // far more likely to be granted than one at a cold start.
         refreshStorageFacts();
+        findArtwork(story);
         return next();
       })['catch'](function (err) {
         failRow(row, err && err.message ? err.message : 'Failed');

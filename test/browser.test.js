@@ -28,6 +28,24 @@ const BIG_BYTES = writeWav(BIG, 130);
 const log = [];
 let failed = 0;
 
+/* Cover art lookup is on by default, so every context that is not testing it
+ * would otherwise reach for itunes.apple.com. The app handles that failing -
+ * that is what the unit tests cover - but the browser still logs a network
+ * error for it, which would blunt the "no console errors" assertions. Failing
+ * the fetch in the page keeps those assertions strict and the lookup honest:
+ * this is exactly what a phone with no signal presents.
+ */
+const NO_ARTWORK_HOSTS = () => {
+  const real = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    const url = String(input && input.url ? input.url : input);
+    if (url.indexOf('itunes.apple.com') >= 0 || url.indexOf('openlibrary.org') >= 0) {
+      return Promise.reject(new TypeError('Failed to fetch'));
+    }
+    return real(input, init);
+  };
+};
+
 function check(name, ok, detail) {
   if (!ok) failed++;
   log.push(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  -- ' + detail : ''}`);
@@ -72,6 +90,7 @@ function writeWav(file, seconds) {
     isMobile: true,
     hasTouch: true,
   });
+  await ctx.addInitScript(NO_ARTWORK_HOSTS);
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
@@ -341,6 +360,7 @@ function writeWav(file, seconds) {
     isMobile: true,
     hasTouch: true,
   });
+  await oldCtx.addInitScript(NO_ARTWORK_HOSTS);
   await oldCtx.addInitScript(() => {
     delete Blob.prototype.arrayBuffer;
     delete window.requestIdleCallback;
@@ -423,6 +443,96 @@ function writeWav(file, seconds) {
     capRows.length === 4 && capRows[0].on === true, JSON.stringify(capRows[0]));
 
   check('no JavaScript errors on the old device', oldErrors.length === 0, oldErrors.join(' | '));
+
+  /* ============================================================================
+     Cover art lookup, with the two hosts faked. The real ones cannot be reached
+     from CI, and what matters here is the wiring: a story that arrives without
+     embedded art ends up with stored bytes, and the switch actually stops it.
+     ========================================================================== */
+  const artCtx = await browser.newContext({ viewport: { width: 375, height: 667 }, isMobile: true, hasTouch: true });
+  await artCtx.addInitScript(() => {
+    const real = window.fetch.bind(window);
+    window.__artCalls = [];
+    window.fetch = function (input, init) {
+      const url = String(input && input.url ? input.url : input);
+      if (url.indexOf('itunes.apple.com') >= 0) {
+        window.__artCalls.push(url);
+        return Promise.resolve(new Response(JSON.stringify({
+          results: [{ collectionName: 'Sleepy Foxes', artworkUrl100: 'https://is1.mzstatic.com/x/100x100bb.jpg' }],
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+      }
+      if (url.indexOf('mzstatic.com') >= 0) {
+        window.__artCalls.push(url);
+        return Promise.resolve(new Response(
+          new Uint8Array([0x89, 0x50, 0x4e, 0x47, 13, 10, 26, 10, 1, 2, 3, 4]),
+          { status: 200, headers: { 'Content-Type': 'image/png' } }
+        ));
+      }
+      return real(input, init);
+    };
+  });
+
+  const art = await artCtx.newPage();
+  const artErrors = [];
+  art.on('pageerror', (e) => artErrors.push(e.message));
+  await art.goto(ORIGIN, { waitUntil: 'networkidle' });
+  await art.waitForTimeout(900);
+
+  await art.locator('.empty-add').click();
+  await art.waitForTimeout(300);
+  await art.locator('#file-input').setInputFiles(FIXTURE);
+  await art.waitForFunction(
+    () => { const n = document.querySelector('.import-status'); return n && n.textContent === 'Ready'; },
+    null, { timeout: 60000 }
+  );
+  await art.waitForFunction(() => {
+    const s = App.debug.stories()[0];
+    return s && (s.hasArt || s.artTried);
+  }, null, { timeout: 20000 });
+
+  const cover = await art.evaluate(async () => {
+    const s = App.debug.stories()[0];
+    const row = await App.store.getArt(s.id);
+    return {
+      hasArt: s.hasArt,
+      bytes: row && row.data ? row.data.byteLength : 0,
+      type: row && row.type,
+      calls: window.__artCalls.length,
+      query: window.__artCalls[0] || '',
+    };
+  });
+  check('an untagged import gets a cover looked up',
+    cover.hasArt === true && cover.bytes === 12 && cover.type === 'image/png', JSON.stringify(cover));
+  check('the search used the story title',
+    cover.query.indexOf(encodeURIComponent('Sleepy Foxes')) >= 0, cover.query);
+  check('the found cover is rendered in the library',
+    (await art.locator('#library-rows .row .cover').first().evaluate((n) => n.style.backgroundImage))
+      .indexOf('blob:') >= 0);
+
+  // Turning it off has to actually stop it.
+  await art.evaluate(async () => {
+    App.settings.set({ artwork: false });
+    App.settings.flush();
+    const s = App.debug.stories()[0];
+    await App.store.deleteStory(s.id);
+    window.__artCalls.length = 0;
+  });
+  await art.reload({ waitUntil: 'networkidle' });
+  await art.waitForTimeout(900);
+  await art.locator('.empty-add').click();
+  await art.waitForTimeout(300);
+  await art.locator('#file-input').setInputFiles(FIXTURE);
+  await art.waitForFunction(
+    () => { const n = document.querySelector('.import-status'); return n && n.textContent === 'Ready'; },
+    null, { timeout: 60000 }
+  );
+  await art.waitForTimeout(2500);
+  const off = await art.evaluate(() => ({
+    calls: window.__artCalls.length,
+    hasArt: App.debug.stories()[0].hasArt,
+  }));
+  check('the switch stops the lookup', off.calls === 0 && !off.hasArt, JSON.stringify(off));
+  check('no JavaScript errors during artwork lookup', artErrors.length === 0, artErrors.join(' | '));
 
   await browser.close();
   server.close();

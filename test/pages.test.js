@@ -117,6 +117,18 @@ function writeWav(file, seconds) {
     isMobile: true,
     hasTouch: true,
   });
+  // Same reason as in browser.test.js: the lookup is on by default and would
+  // otherwise log a network error in a context that is not testing it.
+  await ctx.addInitScript(() => {
+    const real = window.fetch.bind(window);
+    window.fetch = function (input, init) {
+      const url = String(input && input.url ? input.url : input);
+      if (url.indexOf('itunes.apple.com') >= 0 || url.indexOf('openlibrary.org') >= 0) {
+        return Promise.reject(new TypeError('Failed to fetch'));
+      }
+      return real(input, init);
+    };
+  });
   const page = await ctx.newPage();
   const errors = [];
   const failedRequests = [];
