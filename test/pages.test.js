@@ -195,6 +195,19 @@ function writeWav(file, seconds) {
   check('stylesheet survived offline',
     (await page.evaluate(() => getComputedStyle(document.body).fontFamily)).indexOf('Karla') >= 0);
 
+  /* Naming the family only proves the stylesheet loaded. The web fonts are
+   * separate files pulled in by the CSS rather than the page, so they are the
+   * easiest thing to leave out of the shell and the hardest to notice: the app
+   * just quietly falls back to a system face on the first phone with no signal.
+   */
+  const fontsOffline = await page.evaluate(() =>
+    document.fonts.ready.then(() => ({
+      body: document.fonts.check('400 15px Karla'),
+      display: document.fonts.check('700 30px "Baloo 2"'),
+    })));
+  check('the web fonts are there offline too, not just their names',
+    fontsOffline.body && fontsOffline.display, JSON.stringify(fontsOffline));
+
   await page.locator('#library-rows .row .row-open').click();
   await page.waitForTimeout(2500);
   const offlinePlay = await page.evaluate(() => ({

@@ -38,6 +38,22 @@ There is no build step. The files you edit are the files that ship.
 Everything is real: the settings persist, the listening statistics are counted
 from actual playback, and the storage figures are the actual bytes held.
 
+### With no signal
+
+Everything works offline except finding a cover for a story that has none. The
+app shell, the fonts and the icons are cached by the service worker, the audio
+lives in IndexedDB, and cover art is stored as bytes rather than linked, so the
+library paints the same with the phone in aeroplane mode as with full bars. The
+one thing that needs the network is the initial artwork lookup, and a story
+imported with no signal is not written off: nothing is recorded as a miss, and
+the next launch with a connection quietly fills the cover in.
+
+Nothing else reaches out - no fonts from Google, no CDN, no analytics. That is
+kept honest by the build rather than by discipline: `scripts/build-site.js`
+refuses to publish if anything the page or the stylesheet loads is missing from
+the service worker's shell list, which is the easy way to ship a web font that
+silently falls back on the first phone in a bedroom with no reception.
+
 ---
 
 ## How a file gets stored and played back

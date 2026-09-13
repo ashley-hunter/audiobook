@@ -113,8 +113,10 @@ while ((match = refPattern.exec(html)) !== null) {
   if (/^(https?:)?\/\//.test(ref) || ref.charAt(0) === '#' || ref.indexOf('data:') === 0) continue;
   referenced.push(ref.replace(/^\.\//, ''));
 }
-for (const ref of referenced) {
-  if (shipped.indexOf(ref) < 0) problems.push(`index.html references ${ref}, which is not in the site`);
+function checkShipped() {
+  for (const ref of referenced) {
+    if (shipped.indexOf(ref) < 0) problems.push(`${ref} is referenced by the app but is not in the site`);
+  }
 }
 
 // An absolute path would break a project site served from /<repo>/.
@@ -122,6 +124,30 @@ const absolute = referenced.filter((ref) => ref.charAt(0) === '/');
 for (const ref of absolute) {
   problems.push(`index.html uses the absolute path ${ref}; GitHub Pages serves this app from a subdirectory, so paths must be relative`);
 }
+
+/* The stylesheet pulls in files of its own - the four web fonts, and anything
+ * else a url() ever points at. Scanning only index.html would let a new font be
+ * added, ship, and silently fall back to a system face on the first phone with
+ * no reception, which is the exact failure this check exists to prevent.
+ */
+const cssFiles = shipped.filter((file) => /\.css$/.test(file));
+for (const file of cssFiles) {
+  const css = fs.readFileSync(path.join(OUT, file), 'utf8');
+  const dir = path.posix.dirname(file);
+  const urlPattern = /url\(\s*['"]?([^'")]+)['"]?\s*\)/g;
+  let hit;
+  while ((hit = urlPattern.exec(css)) !== null) {
+    const raw = hit[1].trim();
+    if (/^(https?:)?\/\//.test(raw) || raw.indexOf('data:') === 0 || raw.charAt(0) === '#') continue;
+    if (raw.charAt(0) === '/') {
+      problems.push(`${file} uses the absolute path ${raw}; GitHub Pages serves this app from a subdirectory, so paths must be relative`);
+      continue;
+    }
+    referenced.push(path.posix.normalize(path.posix.join(dir, raw)));
+  }
+}
+
+checkShipped();
 
 // The service worker's shell list is what makes the app work with no signal.
 // Every script and stylesheet the page loads has to be in it, or the app comes
@@ -136,9 +162,9 @@ if (!shellBlock) {
   while ((entry = shellPattern.exec(shellBlock[1])) !== null) shell.push(entry[1]);
 
   for (const ref of referenced) {
-    const isCode = /\.(js|css|webmanifest)$/.test(ref);
+    const isCode = /\.(js|css|webmanifest|woff2?|ttf|otf)$/.test(ref);
     if (isCode && shell.indexOf(ref) < 0) {
-      problems.push(`${ref} is loaded by index.html but missing from the SHELL list in sw.js, so it will not be cached for offline use`);
+      problems.push(`${ref} is loaded by the app but missing from the SHELL list in sw.js, so it will not be cached for offline use`);
     }
   }
   for (const ref of shell) {

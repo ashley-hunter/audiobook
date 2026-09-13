@@ -704,6 +704,18 @@ function writeWav(file, seconds) {
     (await art.locator('#library-rows .row .cover').first().evaluate((n) => n.style.backgroundImage))
       .indexOf('blob:') >= 0);
 
+  /* The cover has to be bytes in storage, not a link to Apple's servers. A
+   * remote URL would leave the library looking broken in the one place this
+   * app is meant to work. */
+  await artCtx.setOffline(true);
+  await art.reload({ waitUntil: 'domcontentloaded' });
+  await art.waitForTimeout(1500);
+  const coverOffline = await art
+    .locator('#library-rows .row .cover').first().evaluate((n) => n.style.backgroundImage);
+  check('the cover still paints with no network',
+    coverOffline.indexOf('blob:') >= 0, coverOffline.slice(0, 60));
+  await artCtx.setOffline(false);
+
   // Turning it off has to actually stop it.
   await art.evaluate(async () => {
     App.settings.set({ artwork: false });
@@ -748,6 +760,15 @@ function writeWav(file, seconds) {
   });
   check('an unreachable lookup is not recorded as a miss',
     !retryable.artTried && !retryable.hasArt, JSON.stringify(retryable));
+
+  // Not recording the miss is only worth anything if something comes back for
+  // it, so the next boot with signal has to finish the job unprompted.
+  await art.reload({ waitUntil: 'networkidle' });
+  const caughtUp = await art.waitForFunction(
+    () => { const s = App.debug.stories()[0]; return !!(s && s.hasArt); },
+    null, { timeout: 25000 }
+  ).then(() => true, () => false);
+  check('and a later boot with signal picks the story back up', caughtUp);
   check('no JavaScript errors during artwork lookup', artErrors.length === 0, artErrors.join(' | '));
 
   await browser.close();
