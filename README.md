@@ -188,6 +188,16 @@ broad, because a bare `accept="audio/*"` hides `.m4b` files in the iOS picker.
 **Codecs.** MP3, AAC/M4A, M4B, WAV and FLAC play. Opus, Ogg Vorbis and WebM do
 not, on any iOS 12 device.
 
+**Service workers exist on iOS 12, but media elements may refuse to go through
+one.** Support landed in Safari 11.3, so iOS 12.5.7 has it and the offline shell
+is real. What is not safe to assume is the streaming route: WebKit of this era
+does not reliably let an `<audio>` element load from a service worker URL, which
+is why `media.js` keeps a second route. A media element that errors on the
+worker URL demotes it for the session and the story is reassembled as a Blob URL
+instead, picking up where it was. The cost is memory - a Blob URL holds the
+whole file - which is why it is the fallback rather than the default. Which
+route a real iPhone 6 actually takes is still unverified.
+
 **Considered and left out.** The Origin Private File System (Safari 15.2) would
 be a tidier home for the audio on a modern phone, but it would mean a second
 storage backend and a migration for a difference no one can see - the service
@@ -390,6 +400,16 @@ On the phone: open https://ashley-hunter.github.io/audiobook/ in **Safari** (not
 Chrome - only Safari can install to the Home Screen), then Share → Add to Home
 Screen. Launching from that icon is what gives the app its full screen and its
 own storage.
+
+Two things follow from "its own storage", and both are easy to trip over:
+
+- **Install first, import second.** On this vintage of iOS the Home Screen app
+  is a separate context from Safari, with its own IndexedDB. Stories added in
+  the Safari tab will not be in the app launched from the icon. Add to Home
+  Screen first, then import from the icon.
+- **Open it once with a connection.** The service worker has to register again
+  in that context before anything is cached, so the very first launch from the
+  icon needs signal. After that it runs with none.
 
 ---
 
