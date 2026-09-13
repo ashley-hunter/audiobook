@@ -119,10 +119,19 @@ App.player = (function () {
   }
 
   function seekBy(seconds) {
+    seekTo(position() + seconds);
+  }
+
+  function seekTo(seconds) {
     if (!story || !audio) return;
-    var target = Math.max(0, Math.min(duration() - 1, position() + seconds));
+    var total = duration();
+    // Landing exactly on the end fires `ended` and throws the story away, which
+    // is not what dragging the slider to the right edge should mean.
+    var target = Math.max(0, Math.min(total > 1 ? total - 1 : 0, seconds));
     try { audio.currentTime = target; } catch (err) { void err; }
     checkpoint(true);
+    App.caps.media.setPosition(total, target, audio.playbackRate || 1);
+    emit('tick', position(), total);
   }
 
   function replaceAudio() {
@@ -462,6 +471,7 @@ App.player = (function () {
     pause: pause,
     toggle: toggle,
     seekBy: seekBy,
+    seekTo: seekTo,
     wake: wake,
     position: position,
     duration: duration,

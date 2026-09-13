@@ -243,6 +243,53 @@ function writeWav(file, seconds) {
     session.supported && session.title === 'Sleepy Foxes' && session.playbackState === 'playing',
     JSON.stringify(session));
 
+  /* -------------------------------------------------------------- scrubber */
+  const scrub = await page.evaluate(() => {
+    const el = document.getElementById('scrub');
+    return { max: Number(el.max), disabled: el.disabled, value: Number(el.value) };
+  });
+  check('the scrubber spans the story', scrub.max === 40 && !scrub.disabled, JSON.stringify(scrub));
+  check('and tracks playback', scrub.value > 0, 'value=' + scrub.value);
+
+  // A drag previews the time without seeking; the seek happens on release.
+  const dragging = await page.evaluate(() => {
+    const el = document.getElementById('scrub');
+    el.value = '30';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    return {
+      shown: document.getElementById('elapsed').textContent,
+      remaining: document.getElementById('remaining').textContent,
+      audioAt: App.player.position(),
+    };
+  });
+  check('dragging previews the time', dragging.shown === '0:30' && dragging.remaining === '-0:10',
+    JSON.stringify(dragging));
+  check('and does not seek until released', dragging.audioAt < 20, 'at=' + dragging.audioAt);
+
+  await page.evaluate(() => {
+    const el = document.getElementById('scrub');
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await page.waitForTimeout(500);
+  const seeked = await page.evaluate(() => App.player.position());
+  check('releasing seeks the audio', seeked >= 29 && seeked <= 33, 'at=' + seeked);
+
+  // The tick must not fight a finger that is still down.
+  const held = await page.evaluate(async () => {
+    const el = document.getElementById('scrub');
+    el.value = '5';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 1600));
+    return { value: Number(el.value), shown: document.getElementById('elapsed').textContent };
+  });
+  check('the tick leaves the thumb alone mid-drag', held.value === 5 && held.shown === '0:05',
+    JSON.stringify(held));
+
+  await page.evaluate(() => {
+    document.getElementById('scrub').dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await page.waitForTimeout(300);
+
   /* ------------------------------------------------------------ sleep timer */
   await page.locator('#open-sheet').click();
   await page.waitForTimeout(500);

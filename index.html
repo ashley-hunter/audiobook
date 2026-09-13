@@ -118,8 +118,12 @@
       </div>
 
       <div class="scrub">
-        <span class="mono" id="elapsed">0:00</span>
-        <span class="mono" id="remaining">-0:00</span>
+        <input class="scrub-range" id="scrub" type="range" min="0" max="0" value="0" step="1"
+               aria-label="Position in the story" disabled>
+        <div class="scrub-times">
+          <span class="mono" id="elapsed">0:00</span>
+          <span class="mono" id="remaining">-0:00</span>
+        </div>
       </div>
 
       <div class="controls">

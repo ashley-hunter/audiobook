@@ -25,6 +25,7 @@ window.App = window.App || {};
   var persistedState = null;   // null until the browser has been asked
   var spaceEstimate = null;    // null on browsers that will not say
   var importing = false;       // chunks are being written; do not reload
+  var scrubbing = false;       // a finger is on the position slider
 
   /* ==================================================================== boot */
 
@@ -476,10 +477,17 @@ window.App = window.App || {};
   function updateProgress(position, length) {
     var story = current();
     var total = length || (story ? story.len : 0) || 0;
+
+    // While a finger is on the slider the thumb belongs to the finger, not to
+    // the once-a-second tick, or it would fight the drag.
+    if (!scrubbing) {
+      paintScrubber(position, total);
+      ui.text($('elapsed'), ui.clock(position));
+      ui.text($('remaining'), '-' + ui.clock(Math.max(0, total - position)));
+    }
+
     var fraction = total ? Math.min(1, position / total) : 0;
     ui.ring($('disc-fill'), fraction);
-    ui.text($('elapsed'), ui.clock(position));
-    ui.text($('remaining'), '-' + ui.clock(Math.max(0, total - position)));
 
     var dim = App.settings.get().dim && App.player.playing() ? Math.min(0.5, fraction * 0.8) : 0;
     $('sky-dim').style.opacity = String(dim);
@@ -490,6 +498,58 @@ window.App = window.App || {};
         $('kg-bar').style.width = (fraction * 100).toFixed(1) + '%';
       }
     }
+  }
+
+  /* Safari draws no fill for the elapsed part of a range input, so the track
+   * carries a gradient sized to the value.
+   */
+  function paintScrubber(position, total) {
+    var slider = $('scrub');
+    var usable = total > 0;
+    slider.disabled = !usable;
+    slider.max = usable ? Math.round(total) : 0;
+    slider.value = usable ? Math.round(Math.min(position, total)) : 0;
+    scrubberFill(usable ? Math.min(1, position / total) : 0);
+  }
+
+  function scrubberFill(fraction) {
+    // Fill width, then the full-width groove behind it.
+    $('scrub').style.backgroundSize = (fraction * 100).toFixed(2) + '% 4px, 100% 4px';
+  }
+
+  function wireScrubber() {
+    var slider = $('scrub');
+
+    // `input` fires throughout the drag, `change` when the finger lifts. Seeking
+    // on every input event would stutter the audio, so the drag only previews
+    // the time and the seek happens once, on release.
+    slider.addEventListener('input', function () {
+      if (!App.player.currentStory()) return;
+      scrubbing = true;
+      var total = App.player.duration();
+      var seconds = Number(slider.value) || 0;
+      ui.text($('elapsed'), ui.clock(seconds));
+      ui.text($('remaining'), '-' + ui.clock(Math.max(0, total - seconds)));
+      scrubberFill(total ? Math.min(1, seconds / total) : 0);
+    }, false);
+
+    slider.addEventListener('change', function () {
+      scrubbing = false;
+      if (!App.player.currentStory()) return;
+      App.player.seekTo(Number(slider.value) || 0);
+    }, false);
+
+    // A drag that ends outside the slider never fires `change` on some builds,
+    // so the tick would stay locked out. These let go of it either way.
+    slider.addEventListener('touchend', releaseScrubber, false);
+    slider.addEventListener('touchcancel', releaseScrubber, false);
+    slider.addEventListener('blur', releaseScrubber, false);
+  }
+
+  function releaseScrubber() {
+    if (!scrubbing) return;
+    scrubbing = false;
+    updateProgress(App.player.position(), App.player.duration());
   }
 
   function renderTimerOptions() {
@@ -968,6 +1028,7 @@ window.App = window.App || {};
     };
 
     wireHold();
+    wireScrubber();
   }
 
   function openAdd() {
