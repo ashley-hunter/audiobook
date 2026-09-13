@@ -244,20 +244,21 @@ and publishes to GitHub Pages from the default branch.
   than a hardcoded `main`, so it keeps working whatever the default branch is
   called now or later.
 
-### Two things to do by hand first
+### The one thing a workflow cannot do for itself
 
-**1. Turn Pages on.** Settings → Pages → Build and deployment → Source:
-**GitHub Actions**. Nothing here can do this for you, and until it is done the
-deploy job fails with "Pages site not found". The test job still runs.
+Pages is turned on by the workflow: `configure-pages` runs with
+`enablement: true`, which creates the Pages site on the first deploy instead of
+failing with "Pages site not found". There is nothing to click first.
 
-**2. This repository is private, which Pages will refuse on a free account.**
-Publishing a private repository to Pages needs GitHub Pro, Team or Enterprise.
-On a free plan the deploy job will fail no matter how the workflow is written,
-and the fix is to make the repository public. Nothing sensitive is published
-either way - the site is the app shell, and every story a child adds stays in
-that phone's own storage and never leaves it. Worth knowing that on Pro the
-published site is still publicly reachable by anyone with the URL; only
-Enterprise can restrict who can load it.
+What it cannot get around is a plan limit. **Publishing a private repository to
+Pages needs GitHub Pro, Team or Enterprise.** On a free plan the deploy job
+fails however the workflow is written, and the fix is to make the repository
+public. Nothing sensitive is published either way - the site is the app shell,
+and every story a child adds stays in that phone's own storage and never
+reaches a server. Worth knowing that even on Pro the published site is
+reachable by anyone with the URL; only Enterprise can restrict who can load it.
+
+The test job runs regardless, on every branch and every pull request.
 
 ### The URL
 

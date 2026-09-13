@@ -3,10 +3,10 @@ name: Test and deploy
 # Runs the checks on every push and pull request, and publishes to GitHub Pages
 # from the default branch.
 #
-# Publishing needs Pages turned on once, by hand:
-#   Settings -> Pages -> Build and deployment -> Source: GitHub Actions
-# Until that is done the deploy job fails with "Pages site not found", which is
-# the only setup step that cannot be automated from here.
+# The deploy job turns Pages on itself (configure-pages with enablement), so
+# there is nothing to click first. It still cannot work around a plan limit:
+# Pages refuses a private repository unless the account has Pro, Team or
+# Enterprise, and the fix for that is to make the repository public.
 
 on:
   push:
@@ -16,14 +16,22 @@ on:
 permissions:
   contents: read
 
+# A push and its pull request share a group, so the same commit is not tested
+# twice, and a second push supersedes the first. The default branch is exempt,
+# because cancelling it could interrupt a deploy that is already going out.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) }}
+
 jobs:
   test:
     name: Checks and tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15   # the suite takes about 90 seconds; anything near this is a hang
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '20'
           cache: npm
@@ -73,9 +81,10 @@ jobs:
     # Only the default branch publishes, whatever it happens to be called.
     if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
-      pages: write
+      pages: write      # also lets configure-pages enable Pages on first run
       id-token: write
     environment:
       name: github-pages
@@ -84,9 +93,9 @@ jobs:
       group: pages
       cancel-in-progress: false   # never cancel a deploy that is already going out
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '20'
 
@@ -95,7 +104,11 @@ jobs:
       - name: Build the site
         run: node scripts/build-site.js
 
+      # enablement creates the Pages site on the first run instead of failing
+      # with "Pages site not found". It is a no-op once Pages exists.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:
