@@ -31,7 +31,7 @@ There is no build step. The files you edit are the files that ship.
 | **Saved** | Everything hearted. |
 | **Player** | Starfield, progress ring, play/pause, sleep timer, and a "Sleep tight" curtain once the timer runs out. The sky darkens as the story progresses. |
 | **Sleep timer** | 10 / 20 / 30 minutes or to the end of the story. The sound fades out over the last 20 seconds. |
-| **Parent controls** | Hold the moon for three seconds. Bedtime, stories per night, default timer, child's name, playback switches, storage use, what this device supports, and the week's listening. |
+| **Parents** | A tab. Bedtime, stories per night, default timer, child's name, playback switches, storage use and removal, what this device supports, and the week's listening. |
 | **Add stories** | Pick audio from the Files app. Each file is copied into the app, tagged, given cover art, and listed. Reachable from the header, the empty state and parent controls - anyone can add. |
 
 Everything is real: the settings persist, the listening statistics are counted
@@ -222,12 +222,17 @@ Places where the prototype could not be followed literally, and why:
   stopped".** Nothing downloads in a local-file app, so the original switch would
   have done nothing. The replacement is real and defaults to on.
 - **"Lock to the library" is gone.** It was implemented as "Only parents can add
-  stories", hiding the Add button and leaving the three second moon hold as the
-  only way in. That made a fresh install a dead end - the empty state invited
-  you to add a story with no button to do it. Adding is now open to anyone, from
-  the header chip, the empty state and parent controls alike. Parent controls
-  themselves stay behind the moon hold, so settings, removal and the week's
-  listening are still not somewhere a child lands by accident.
+  stories", hiding the Add button and leaving a hidden gesture as the only way
+  in. That made a fresh install a dead end - the empty state invited you to add
+  a story with no button to do it. Adding is now open to anyone, from the header
+  chip, the empty state and the Parents tab alike.
+
+- **Parent controls became a tab, and the moon a plain button.** The prototype
+  opens them by holding the moon for three seconds, which kept a child out but
+  kept everyone else out too - it is not a gesture anyone finds on their own.
+  They are now the third tab, and the moon in the greeting opens them with a
+  tap. Deliberately at the owner's call: it puts settings and removal one tap
+  from whoever is holding the phone.
 - **Bedtime, stories per night and child's name are editable.** The prototype
   draws them as static rows. A settings row that does nothing is worse than one
   that works, so they use native controls and feed the home screen's subtitle.
@@ -235,9 +240,9 @@ Places where the prototype could not be followed literally, and why:
   controls. Storage is finite and the prototype has no way to reclaim it. It
   asks first, naming the story and the space it frees, using an in-app dialog
   rather than `window.confirm` - which a Home Screen web app renders as a system
-  alert captioned with the site's origin. Removal stays behind the moon hold
-  even though adding does not: adding a wrong file is a nuisance, deleting the
-  right one is not.
+  alert captioned with the site's origin. It is the one action in the app that
+  cannot be undone, which is why it asks - adding a wrong file is a nuisance,
+  deleting the right one is not.
 - **The player has no seek control,** matching the prototype. A child's player
   deliberately has nothing to scrub.
 - **The iOS device frame** (`ios-frame.jsx`) is prototype chrome, not part of the

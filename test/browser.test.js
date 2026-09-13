@@ -123,14 +123,12 @@ function writeWav(file, seconds) {
   await page.locator('#add-close').click();
   await page.waitForTimeout(400);
 
-  /* ------------------------------------------- hold the moon for 3 seconds */
-  const moon = await page.locator('#moon-btn').boundingBox();
-  await page.mouse.move(moon.x + moon.width / 2, moon.y + moon.height / 2);
-  await page.mouse.down();
-  await page.waitForTimeout(3400);
-  await page.mouse.up();
-  check('holding the moon opens parent controls',
+  /* ------------------------------------------------ into parent controls */
+  await page.locator('#tab-parent').click();
+  check('the Parents tab opens parent controls',
     await page.locator('#parent').evaluate((n) => n.className.indexOf('is-open') >= 0));
+  check('and marks itself as the active tab',
+    await page.locator('#tab-parent').evaluate((n) => n.className.indexOf('is-on') >= 0));
 
   /* ------------------------------------------------------------- importing */
   await page.locator('#parent-add').click();
@@ -294,11 +292,7 @@ function writeWav(file, seconds) {
   check('blob fallback reassembles the file', blobBytes === FIXTURE_BYTES, 'bytes=' + blobBytes);
 
   /* ---------------------------------------------- removal, through the UI */
-  const moon2 = await page.locator('#moon-btn').boundingBox();
-  await page.mouse.move(moon2.x + moon2.width / 2, moon2.y + moon2.height / 2);
-  await page.mouse.down();
-  await page.waitForTimeout(3400);
-  await page.mouse.up();
+  await page.locator('#tab-parent').click();
   await page.waitForTimeout(500);
 
   check('parent controls list what is stored',
@@ -392,11 +386,7 @@ function writeWav(file, seconds) {
     !caps.storageEstimate && !caps.idleCallback && caps.serviceWorker,
     JSON.stringify(caps));
 
-  const oldMoon = await old.locator('#moon-btn').boundingBox();
-  await old.mouse.move(oldMoon.x + oldMoon.width / 2, oldMoon.y + oldMoon.height / 2);
-  await old.mouse.down();
-  await old.waitForTimeout(3400);
-  await old.mouse.up();
+  await old.locator('#tab-parent').click();
   await old.locator('#parent-add').click();
   await old.waitForTimeout(400);
   await old.locator('#file-input').setInputFiles(FIXTURE);
@@ -419,11 +409,7 @@ function writeWav(file, seconds) {
 
   await old.locator('#player-close').click();
   await old.waitForTimeout(400);
-  const oldMoon2 = await old.locator('#moon-btn').boundingBox();
-  await old.mouse.move(oldMoon2.x + oldMoon2.width / 2, oldMoon2.y + oldMoon2.height / 2);
-  await old.mouse.down();
-  await old.waitForTimeout(3400);
-  await old.mouse.up();
+  await old.locator('#tab-parent').click();
   await old.waitForTimeout(500);
 
   const note = await old.evaluate(() => document.getElementById('storage-note').textContent);
