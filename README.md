@@ -246,17 +246,26 @@ and publishes to GitHub Pages from the default branch.
 
 ### The one thing a workflow cannot do for itself
 
-Pages is turned on by the workflow: `configure-pages` runs with
-`enablement: true`, which creates the Pages site on the first deploy instead of
-failing with "Pages site not found". There is nothing to click first.
+**Turn Pages on: Settings → Pages → Build and deployment → Source: GitHub
+Actions.** That is the only manual step, and it genuinely cannot be automated.
+`configure-pages` has an `enablement` option, which was tried and does not work
+here: creating a Pages site counts as administering repository settings, and the
+built-in `GITHUB_TOKEN` is refused whatever permissions the workflow requests.
 
-What it cannot get around is a plan limit. **Publishing a private repository to
-Pages needs GitHub Pro, Team or Enterprise.** On a free plan the deploy job
-fails however the workflow is written, and the fix is to make the repository
-public. Nothing sensitive is published either way - the site is the app shell,
-and every story a child adds stays in that phone's own storage and never
-reaches a server. Worth knowing that even on Pro the published site is
-reachable by anyone with the URL; only Enterprise can restrict who can load it.
+```
+Create Pages site failed. Error: Resource not accessible by integration
+```
+
+So the deploy job prints what to click when it hits this, rather than leaving
+you with the raw "Pages site not found".
+
+**If that settings page says Pages is unavailable, it is the plan and not the
+setting.** Publishing a private repository needs GitHub Pro, Team or
+Enterprise; making the repository public is the other way through. Nothing
+sensitive is published either way - the site is the app shell, and every story a
+child adds stays in that phone's own storage and never reaches a server. Worth
+knowing that even on Pro the published site is reachable by anyone with the URL;
+only Enterprise can restrict who can load it.
 
 The test job runs regardless, on every branch and every pull request.
 

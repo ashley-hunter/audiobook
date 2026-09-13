@@ -3,10 +3,15 @@ name: Test and deploy
 # Runs the checks on every push and pull request, and publishes to GitHub Pages
 # from the default branch.
 #
-# The deploy job turns Pages on itself (configure-pages with enablement), so
-# there is nothing to click first. It still cannot work around a plan limit:
-# Pages refuses a private repository unless the account has Pro, Team or
-# Enterprise, and the fix for that is to make the repository public.
+# Pages has to be turned on once by hand:
+#   Settings -> Pages -> Build and deployment -> Source: GitHub Actions
+#
+# The workflow cannot do it for you. configure-pages has an `enablement` option,
+# but creating a Pages site means administering repository settings, which the
+# built-in GITHUB_TOKEN is not allowed to do whatever permissions are requested:
+#   Create Pages site failed. Error: Resource not accessible by integration
+# So the deploy job prints what to click instead, and the test job runs either
+# way on every branch and every pull request.
 
 on:
   push:
@@ -104,11 +109,21 @@ jobs:
       - name: Build the site
         run: node scripts/build-site.js
 
-      # enablement creates the Pages site on the first run instead of failing
-      # with "Pages site not found". It is a no-op once Pages exists.
-      - uses: actions/configure-pages@v5
-        with:
-          enablement: true
+      - id: pages
+        uses: actions/configure-pages@v5
+
+      # The raw failure is "Get Pages site failed ... Not Found", which does not
+      # say what to do about it. This does.
+      - name: Finishing the Pages setup
+        if: failure() && steps.pages.outcome == 'failure'
+        run: |
+          echo "::error title=GitHub Pages is not enabled::Open Settings -> Pages -> Build and deployment and set Source to 'GitHub Actions', then re-run this job."
+          echo ""
+          echo "If that page says Pages is unavailable, it is the plan rather than the setting:"
+          echo "publishing a private repository needs GitHub Pro, Team or Enterprise."
+          echo "Making the repository public is the other way through. Nothing sensitive is"
+          echo "published either way - the site is the app shell, and every story a child adds"
+          echo "stays in that phone's own storage and never reaches a server."
 
       - uses: actions/upload-pages-artifact@v3
         with:
