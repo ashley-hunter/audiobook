@@ -217,6 +217,18 @@ App.player = (function () {
     checkpoint(true);
   }
 
+  // Stops and lets go of the story, keeping its place for next time.
+  function unload() {
+    if (!story) return;
+    pause();
+    story = null;
+    fading = false;
+    restoreGain();
+    audio.removeAttribute('src');
+    audio.load();
+    App.caps.media.setPlaybackState(false);
+  }
+
   function toggle() {
     if (!story) return Promise.resolve();
     if (audio.paused) return play();
@@ -235,6 +247,7 @@ App.player = (function () {
   function playing() { return !!(audio && !audio.paused && !audio.ended); }
 
   function currentStory() { return story; }
+  function ended() { return !!(audio && audio.ended); }
 
   /* --------------------------------------------------------- sleep timer */
 
@@ -640,6 +653,7 @@ App.player = (function () {
     play: play,
     pause: pause,
     toggle: toggle,
+    unload: unload,
     seekBy: seekBy,
     seekTo: seekTo,
     wake: wake,
@@ -647,6 +661,7 @@ App.player = (function () {
     duration: duration,
     playing: playing,
     currentStory: currentStory,
+    ended: ended,
     setSleepMinutes: setSleepMinutes,
     setSleepStories: setSleepStories,
     carrySleep: carrySleep,

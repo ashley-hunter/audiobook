@@ -377,8 +377,10 @@ h1, h2, p { margin: 0; }
   -webkit-backdrop-filter: blur(22px);
   backdrop-filter: blur(22px);
   box-shadow: 0 10px 30px rgba(0, 0, 0, .35);
+  transition: transform .3s var(--ease), opacity .26s ease;
 }
 .mini[hidden] { display: none; }
+.mini.is-leaving { transform: translateY(140%); opacity: 0; }
 .mini-open { display: flex; align-items: center; flex: 1; min-width: 0; height: 100%; text-align: left; }
 .mini-cover { width: 46px; height: 46px; border-radius: 10px; flex: none; }
 .mini-title {

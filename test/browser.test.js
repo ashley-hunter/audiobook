@@ -307,6 +307,35 @@ function writeWav(file, seconds) {
   await page.waitForTimeout(500);
   check('sleep sheet opens',
     await page.locator('#sheet').evaluate((n) => n.className.indexOf('is-open') >= 0));
+
+  // Declared here as well as in the persistence section below, which swipes
+  // the player itself.
+  const swipeSheet = (distance) => page.evaluate(async (distance) => {
+    const target = document.querySelector('#sheet h2');
+    const at = (y) => new Touch({ identifier: 2, target, clientX: 180, clientY: y });
+    const fire = (type, y) => target.dispatchEvent(new TouchEvent(type, {
+      touches: type === 'touchend' ? [] : [at(y)], changedTouches: [at(y)], bubbles: true, cancelable: true,
+    }));
+    fire('touchstart', 400);
+    for (let i = 1; i <= 10; i++) {
+      fire('touchmove', 400 + (distance * i) / 10);
+      await new Promise((r) => setTimeout(r, 30));
+    }
+    await new Promise((r) => setTimeout(r, 150));
+    fire('touchend', 400 + distance);
+    await new Promise((r) => setTimeout(r, 600));
+    return {
+      sheet: document.getElementById('sheet').className.indexOf('is-open') >= 0,
+      player: document.getElementById('player').className.indexOf('is-open') >= 0,
+    };
+  }, distance);
+  const sprung = await swipeSheet(30);
+  check('a short swipe on the timer sheet springs back', sprung.sheet && sprung.player, JSON.stringify(sprung));
+  const swiped = await swipeSheet(250);
+  check('a long swipe dismisses the sheet and only the sheet',
+    !swiped.sheet && swiped.player, JSON.stringify(swiped));
+  await page.locator('#open-sheet').click();
+  await page.waitForTimeout(500);
   await page.locator('.timer-opt').first().click();
   await page.waitForTimeout(300);
   check('sleep timer set to 10 minutes',
@@ -377,8 +406,8 @@ function writeWav(file, seconds) {
 
   // Swipe down on the player, the Apple Music way: a short pull springs back,
   // a long one puts the player away.
-  const swipeDown = (distance) => page.evaluate(async (distance) => {
-    const target = document.getElementById('player-title');
+  const swipeDown = (distance, id = 'player-title') => page.evaluate(async ({ distance, id }) => {
+    const target = document.getElementById(id);
     const at = (y) => new Touch({ identifier: 1, target, clientX: 180, clientY: y });
     const fire = (type, y) => target.dispatchEvent(new TouchEvent(type, {
       touches: type === 'touchend' ? [] : [at(y)], changedTouches: [at(y)], bubbles: true, cancelable: true,
@@ -392,11 +421,26 @@ function writeWav(file, seconds) {
     fire('touchend', 200 + distance);
     await new Promise((r) => setTimeout(r, 600));
     return document.getElementById('player').className.indexOf('is-open') >= 0;
-  }, distance);
+  }, { distance, id });
   check('a short swipe down springs the player back', await swipeDown(60));
   check('a long swipe down dismisses the player', !(await swipeDown(300)));
 
   check('a mini player keeps the story in reach', await page.locator('#mini').isVisible());
+  const reopened = await page.evaluate(async () => {
+    const audio = document.getElementById('audio');
+    const src = audio.src;
+    let restarted = false;
+    audio.addEventListener('emptied', () => { restarted = true; }, { once: true });
+    const before = audio.currentTime;
+    document.querySelector('#library-rows .row-open').click();
+    await new Promise((r) => setTimeout(r, 800));
+    return { same: audio.src === src, restarted, before, after: audio.currentTime, playing: App.player.playing() };
+  });
+  check('tapping the story already playing leaves the audio alone',
+    reopened.same && !reopened.restarted && reopened.after >= reopened.before && reopened.playing,
+    JSON.stringify(reopened));
+  await page.locator('#player-close').click();
+  await page.waitForTimeout(600);
   const miniPlaying = await page.evaluate(() => App.player.playing());
   await page.locator('#mini-play').click();
   await page.waitForTimeout(300);
@@ -410,6 +454,25 @@ function writeWav(file, seconds) {
     (await page.locator('#player').getAttribute('class')).includes('is-open') &&
     !(await page.locator('#mini').isVisible()));
   await page.locator('#player-close').click();
+  await page.waitForTimeout(600);
+
+  await swipeDown(20, 'mini-title');
+  check('a short swipe on the mini player leaves it be', await page.locator('#mini').isVisible());
+  await swipeDown(60, 'mini-title');
+  const putAway = await page.evaluate(() => ({
+    shown: !document.getElementById('mini').hidden,
+    loaded: !!App.player.currentStory(),
+    playing: App.player.playing(),
+    pos: App.debug.stories()[0].pos,
+  }));
+  check('swiping the mini player down stops the story and puts the bar away',
+    !putAway.shown && !putAway.loaded && !putAway.playing && putAway.pos > 0, JSON.stringify(putAway));
+  await page.locator('#library-rows .row-open').first().click();
+  await page.waitForTimeout(1500);
+  check('and the story picks up where it was',
+    (await page.evaluate(() => App.player.position())) >= putAway.pos - 1);
+  await page.locator('#player-close').click();
+  await page.waitForTimeout(600);
   await page.waitForTimeout(500);
   check('there is no tab bar any more', (await page.locator('#tabbar').count()) === 0);
 

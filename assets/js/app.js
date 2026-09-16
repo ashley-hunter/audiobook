@@ -767,6 +767,13 @@ window.App = window.App || {};
     currentId = id;
     if (!opts.carrySleep) queue(id);
     openPlayer();
+    // Already loaded: loading it again would stop and restart the sound.
+    var loaded = App.player.currentStory();
+    if (loaded && loaded.id === id && !App.player.ended()) {
+      if (!App.player.playing()) App.player.play();
+      renderPlayer();
+      return;
+    }
     var resume = App.settings.get().resume === false ? 0 : (story.pos || 0);
     App.player.load(story, { autoplay: true, startAt: resume })['catch'](function (err) {
       ui.toast(err && err.message ? err.message : 'That story could not be opened.');
@@ -808,19 +815,20 @@ window.App = window.App || {};
     ui.toggleClass($('mini-play'), 'is-playing', playing);
     $('mini-play').setAttribute('aria-label', playing ? 'Pause' : 'Play');
   }
-  /* Swipe the player down to put it away, the way Apple Music's does: it
-   * follows the finger, and a long enough or quick enough pull dismisses it.
-   * The scrubber and the timer sheet keep their own drags.
+  /* Swipe down to put something away, the way Apple Music does: it follows the
+   * finger, and a long enough or quick enough pull dismisses it. `dismiss` gets
+   * the node with the finger's offset still applied, so it can animate on from
+   * there; otherwise the node springs back.
    */
-  var SWIPE_CLOSE_FRACTION = 0.25;   // of the screen height
+  var SWIPE_CLOSE_FRACTION = 0.25;   // of the node's height
+  var SWIPE_CLOSE_MIN = 40;          // px, so a short bar is not dismissed by a twitch
   var SWIPE_CLOSE_SPEED = 0.5;       // px per ms at the moment of release
 
-  function wirePlayerSwipe() {
-    var player = $('player');
+  function wireSwipeDown(node, canStart, dismiss) {
     var swipe = null;
 
     function start(event) {
-      if (event.touches.length !== 1 || !swipeable(event.target)) return;
+      if (event.touches.length !== 1 || !canStart(event.target)) return;
       var touch = event.touches[0];
       swipe = { x: touch.clientX, y: touch.clientY, dy: 0, on: false,
                 lastY: touch.clientY, lastAt: Date.now(), speed: 0 };
@@ -835,7 +843,7 @@ window.App = window.App || {};
         if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
         if (dy <= 0 || Math.abs(dx) > dy) { swipe = null; return; }   // sideways or up
         swipe.on = true;
-        player.style.transition = 'none';
+        node.style.transition = 'none';
       }
       event.preventDefault();
       var now = Date.now();
@@ -843,7 +851,7 @@ window.App = window.App || {};
       swipe.lastY = touch.clientY;
       swipe.lastAt = now;
       swipe.dy = Math.max(0, dy);
-      player.style.transform = 'translateY(' + swipe.dy + 'px)';
+      node.style.transform = 'translateY(' + swipe.dy + 'px)';
     }
 
     function end() {
@@ -853,23 +861,55 @@ window.App = window.App || {};
       if (!done.on) return;
       var flicked = Date.now() - done.lastAt < 100 && done.speed > SWIPE_CLOSE_SPEED;
       // Handing back to the stylesheet animates from wherever the finger left it.
-      player.style.transition = '';
-      player.style.transform = '';
-      if (flicked || done.dy > player.offsetHeight * SWIPE_CLOSE_FRACTION) closePlayer();
+      node.style.transition = '';
+      if (flicked || done.dy > Math.max(SWIPE_CLOSE_MIN, node.offsetHeight * SWIPE_CLOSE_FRACTION)) {
+        dismiss();
+      } else {
+        node.style.transform = '';
+      }
     }
 
-    function swipeable(node) {
+    node.addEventListener('touchstart', start, false);
+    node.addEventListener('touchmove', move, { passive: false });
+    node.addEventListener('touchend', end, false);
+    node.addEventListener('touchcancel', end, false);
+  }
+
+  function wireSwipes() {
+    var player = $('player');
+    // The scrubber keeps its own drag, and the sheet and curtain their taps.
+    wireSwipeDown(player, function (target) {
       if ($('sheet').className.indexOf('is-open') >= 0) return false;
-      for (; node && node !== player; node = node.parentNode) {
+      for (var node = target; node && node !== player; node = node.parentNode) {
         if (node.id === 'scrub' || node.id === 'asleep') return false;
       }
       return true;
-    }
+    }, function () {
+      player.style.transform = '';
+      closePlayer();
+    });
 
-    player.addEventListener('touchstart', start, false);
-    player.addEventListener('touchmove', move, { passive: false });
-    player.addEventListener('touchend', end, false);
-    player.addEventListener('touchcancel', end, false);
+    // Only from the top of its scroll, as with a native sheet; further down,
+    // the finger is scrolling the sheet.
+    var sheet = $('sheet');
+    wireSwipeDown(sheet, function () { return sheet.scrollTop <= 0; }, function () {
+      sheet.style.transform = '';
+      closeSheet();
+    });
+
+    // Putting the mini player away ends the story for now: paused, its place
+    // kept, and nothing loaded, so the bar has no reason to come back.
+    var mini = $('mini');
+    wireSwipeDown(mini, function () { return true; }, function () {
+      ui.toggleClass(mini, 'is-leaving', true);
+      mini.style.transform = '';
+      setTimeout(function () {
+        ui.toggleClass(mini, 'is-leaving', false);
+        App.player.unload();
+        renderMini();
+        renderHome();
+      }, 260);
+    });
   }
 
   function openSheet() { ui.toggleClass($('sheet'), 'is-open', true); ui.toggleClass($('sheet-scrim'), 'is-on', true); }
@@ -1459,7 +1499,7 @@ window.App = window.App || {};
     wireHold();
     wireScrubber();
     wirePicksDrag();
-    wirePlayerSwipe();
+    wireSwipes();
   }
 
   function openAdd() {
