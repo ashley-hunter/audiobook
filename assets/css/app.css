@@ -131,6 +131,24 @@ button {
   cursor: pointer;
 }
 h1, h2, p { margin: 0; }
+
+/* Native feel. No text selection, no press-and-hold callout, no dragging an
+   icon out of the page, and no double-tap zoom; inputs keep their selection. */
+body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+  cursor: default;
+}
+input {
+  -webkit-user-select: text;
+  user-select: text;
+}
+svg, img { -webkit-user-drag: none; }
+/* A pressed state, which iOS does not give a styled button of its own. :active
+   only fires on iOS with a touchstart listener on the document; app.js has one. */
+button:active { opacity: .6; }
 [hidden] { display: none !important; }
 
 .app {
@@ -279,8 +297,10 @@ h1, h2, p { margin: 0; }
   -webkit-user-select: none;
   user-select: none;
 }
-.pick.is-dragging { position: relative; z-index: 2; opacity: .85; }
-.pick.is-dragging .pick-cover { box-shadow: 0 14px 34px rgba(0, 0, 0, .5); }
+.pick-cover { transition: transform .18s var(--ease), box-shadow .18s ease; }
+.pick.is-lifted .pick-cover { transform: scale(1.05); box-shadow: 0 14px 34px rgba(0, 0, 0, .5); }
+.pick.is-lifted .pick-btn { opacity: 1; }
+.pick.is-dragging { position: relative; z-index: 2; }
 .pick-btn { display: block; width: 100%; text-align: left; }
 .picks-empty { font-size: 14px; line-height: 1.5; color: var(--cream-50); }
 .pick-frame { display: block; position: relative; }
@@ -488,8 +508,8 @@ h1, h2, p { margin: 0; }
   stroke-linejoin: round;
 }
 .icon-chevron { width: 20px; height: 20px; }
-.heart { color: rgba(255, 255, 255, .45); }
-.heart.is-on { color: var(--pink); }
+.icon-skip { width: 32px; height: 32px; stroke-width: 2; }
+.icon-skip text { fill: currentColor; stroke: none; font: 700 10.5px var(--body); text-anchor: middle; }
 
 .disc {
   position: relative;

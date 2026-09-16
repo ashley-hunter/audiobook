@@ -14,6 +14,7 @@ window.App = window.App || {};
   var $ = ui.$;
 
   var HOLD_MS = 3000;       // how long the moon must be held to reach parent controls
+  var SKIP_SECONDS = 15;    // the player's back and forward buttons
 
   var stories = [];
   var mood = 'All';
@@ -31,6 +32,8 @@ window.App = window.App || {};
 
   function boot() {
     watchForInteraction();   // before the async work: a tap during boot counts
+    // iOS ignores user-scalable=no, so a pinch would zoom the whole app.
+    document.addEventListener('gesturestart', function (event) { event.preventDefault(); }, false);
     registerServiceWorker();
 
     App.store.open()
@@ -532,7 +535,6 @@ window.App = window.App || {};
     ui.text($('player-title'), story.title);
     ui.text($('player-meta'), rowMeta(story));
     ui.paintCover($('disc-cover'), story);
-    ui.toggleClass($('player-fav'), 'is-on', !!story.fav);
     renderTimerOptions();
     renderUpNext();
     updateProgress(App.player.position(), App.player.duration());
@@ -922,7 +924,6 @@ window.App = window.App || {};
     App.store.patchStory(id, { fav: story.fav })['catch'](function () { return null; });
     stories = sortStories(stories);
     renderHome();
-    if (current() && current().id === id) ui.toggleClass($('player-fav'), 'is-on', story.fav);
   }
 
   /* ======================================================= parent controls */
@@ -1026,10 +1027,12 @@ window.App = window.App || {};
     $('menu').setAttribute('aria-hidden', 'true');
   }
 
-  /* Press and hold a pick and its menu opens, as on the iOS Home Screen. Keep
-   * holding and move, and the menu gives way to a drag along the strip: the
-   * other picks make way as it passes them, and the strip scrolls when it is
-   * held near an edge. Touch events rather than HTML drag and drop or pointer
+  /* Press and hold a pick and it lifts. Move while it is lifted and it drags
+   * along the strip: the other picks make way as it passes them, and the strip
+   * scrolls when it is held near an edge. Let go without moving and its menu
+   * opens instead. Waiting for the release is what keeps the two apart - a menu
+   * that opened mid-hold would sit under the finger that meant to drag.
+   * Touch events rather than HTML drag and drop or pointer
    * events, neither of which an iPhone on iOS 12 has. Mouse is wired too, for
    * desktop and tests.
    */
@@ -1051,12 +1054,11 @@ window.App = window.App || {};
       while (node && node.parentNode !== host) node = node.parentNode;
       if (!node) return;
       var p = point(event);
-      var story = lineup()[indexIn(node)];
       drag = { node: node, start: p, last: p, held: false, on: false, from: indexIn(node), shift: 0 };
       drag.timer = setTimeout(function () {
         drag.held = true;
         drag.grab = p.x - node.getBoundingClientRect().left;   // finger's place on the cover
-        if (story) openStoryMenu(story);
+        ui.toggleClass(node, 'is-lifted', true);
       }, DRAG_HOLD_MS);
     }
 
@@ -1074,7 +1076,6 @@ window.App = window.App || {};
       if (!drag.on) {
         if (!moved) return;
         drag.on = true;
-        closeStoryMenu();
         drag.scroller = setInterval(edgeScroll, 16);
         ui.toggleClass(drag.node, 'is-dragging', true);
       }
@@ -1114,11 +1115,17 @@ window.App = window.App || {};
       drag = null;
       clearTimeout(done.timer);
       clearInterval(done.scroller);
-      // Lifting a finger after a hold would otherwise click whatever is now
-      // under it, which is the menu's scrim, and close the menu straight away.
-      if (done.held && event && event.type === 'touchend') event.preventDefault();
-      if (done.held) suppressClickUntil = Date.now() + 500;
-      if (!done.on) return;
+      if (!done.held) return;
+      // The hold was the gesture, so the release is not also a tap: without
+      // this the click lands on the menu's scrim and closes it at once.
+      if (event && event.type === 'touchend') event.preventDefault();
+      suppressClickUntil = Date.now() + 500;
+      ui.toggleClass(done.node, 'is-lifted', false);
+      if (!done.on) {
+        var story = lineup()[done.from];
+        if (story && indexIn(done.node) >= 0) openStoryMenu(story);
+        return;
+      }
       done.node.style.transform = '';
       ui.toggleClass(done.node, 'is-dragging', false);
       // -1 if the strip was rebuilt mid-drag, in which case there is nothing to move.
@@ -1429,17 +1436,14 @@ window.App = window.App || {};
     $('player-close').onclick = closePlayer;
     $('mini-open').onclick = openPlayer;
     $('mini-play').onclick = function () { App.player.toggle(); };
-    $('to-library').onclick = function () { scrollTop(); closePlayer(); };
+    $('skip-back').onclick = function () { App.player.seekBy(-SKIP_SECONDS); };
+    $('skip-forward').onclick = function () { App.player.seekBy(SKIP_SECONDS); };
     $('playbtn').onclick = function () {
       if (!App.player.currentStory()) {
         var story = current();
         if (story) { openStory(story.id); return; }
       }
       App.player.toggle();
-    };
-    $('player-fav').onclick = function () {
-      var story = current();
-      if (story) toggleFav(story.id);
     };
     $('open-sheet').onclick = function () { renderTimerOptions(); openSheet(); };
     $('sheet-close').onclick = closeSheet;

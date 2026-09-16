@@ -29,7 +29,7 @@ There is no build step. The files you edit are the files that ship.
 | --- | --- |
 | **Tonight** | Greeting, a "Keep going" card for the half-finished story, tonight's picks, and the full library with hearted stories first. Each story's ⋯ menu adds it to or takes it out of tonight's picks. |
 | **Tonight's picks** | The queue: a single scrolling row, numbered in play order, empty until something is added. Playing a story or adding it from its menu appends it, a story leaves once it has played to the end, and each one runs on into the next. Hold a pick and drag it to reorder, or use "Play sooner" in its menu. |
-| **Player** | Starfield, progress ring, scrubber, play/pause, sleep timer, and a "Sleep tight" curtain once the timer runs out. The sky darkens as the story progresses. |
+| **Player** | Starfield, progress ring, scrubber, 15 second back and forward either side of play/pause, the sleep timer behind the moon, and a "Sleep tight" curtain once the timer runs out. The sky darkens as the story progresses. Swipe down to put it away; a mini player keeps the story in reach, and swiping that away stops the story. |
 | **Sleep timer** | 10 / 20 / 30 minutes or any number typed in, or a number of stories from the queue (the one playing counts as one, however far in). The sound fades out over the last 20 seconds. |
 | **Parent controls** | Hold the moon for three seconds. Bedtime, stories per night, default timer, child's name, playback switches, storage use, and the week's listening. |
 | **Add stories** | Pick audio from the Files app. Each file is copied into the app, tagged, given cover art, and listed. Reachable from the header, the empty state and parent controls - anyone can add. |

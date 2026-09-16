@@ -100,7 +100,7 @@
           </svg>
         </button>
         <span class="eyebrow eyebrow-dim">Tonight&rsquo;s story</span>
-        <button class="round round-sm heart" id="player-fav" type="button" aria-label="Heart this story">&#9829;</button>
+        <button class="round round-sm" id="open-sheet" type="button" aria-label="Sleep timer">&#9790;</button>
       </div>
 
       <div class="player-mid">
@@ -127,9 +127,25 @@
       </div>
 
       <div class="controls">
-        <button class="round" id="open-sheet" type="button" aria-label="Sleep timer">&#9790;</button>
+        <button class="round" id="skip-back" type="button" aria-label="Back 15 seconds">
+          <svg class="icon icon-skip" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+            <g>
+              <path d="M16 5.5 A10.5 10.5 0 1 1 6.9 10.75"></path>
+              <path d="M19 2.5 L16 5.5 L19 8.5"></path>
+            </g>
+            <text x="16" y="20">15</text>
+          </svg>
+        </button>
         <button class="playbtn" id="playbtn" type="button"><span id="play-label">Play</span></button>
-        <button class="round" id="to-library" type="button" aria-label="Back to library">&#9776;</button>
+        <button class="round" id="skip-forward" type="button" aria-label="Forward 15 seconds">
+          <svg class="icon icon-skip" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+            <g transform="translate(32 0) scale(-1 1)">
+              <path d="M16 5.5 A10.5 10.5 0 1 1 6.9 10.75"></path>
+              <path d="M19 2.5 L16 5.5 L19 8.5"></path>
+            </g>
+            <text x="16" y="20">15</text>
+          </svg>
+        </button>
       </div>
       <p class="sleep-label" id="sleep-label">&nbsp;</p>
       <p class="upnext" id="upnext" hidden></p>

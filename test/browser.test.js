@@ -402,7 +402,22 @@ function writeWav(file, seconds) {
   check('countdown resumes on play', resumed < before, `${before} -> ${resumed}`);
 
   /* ------------------------------------------------------------ persistence */
-  await page.locator('#player-fav').click();
+  const skipped = await page.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    App.player.seekTo(20);
+    await wait(300);
+    const start = App.player.position();
+    document.getElementById('skip-back').click();
+    await wait(300);
+    const back = App.player.position();
+    document.getElementById('skip-forward').click();
+    await wait(300);
+    return { start, back, forward: App.player.position() };
+  });
+  check('the back button jumps 15 seconds back',
+    Math.abs(skipped.back - (skipped.start - 15)) < 1.5, JSON.stringify(skipped));
+  check('and the forward button 15 seconds on',
+    Math.abs(skipped.forward - (skipped.back + 15)) < 1.5, JSON.stringify(skipped));
 
   // Swipe down on the player, the Apple Music way: a short pull springs back,
   // a long one puts the player away.
@@ -476,6 +491,7 @@ function writeWav(file, seconds) {
   await page.waitForTimeout(500);
   check('there is no tab bar any more', (await page.locator('#tabbar').count()) === 0);
 
+  await page.locator('#library-rows .row-heart').first().click();
   await page.evaluate(() => App.player.checkpoint(true));
   await page.waitForTimeout(400);
   await page.reload({ waitUntil: 'networkidle' });
@@ -557,7 +573,7 @@ function writeWav(file, seconds) {
   await page.mouse.move(firstPick.x + 10, firstPick.y + firstPick.height / 2, { steps: 8 });
   await page.mouse.up();
   await page.waitForTimeout(300);
-  check('moving while held swaps the menu for a drag',
+  check('a drag never opens the menu',
     !(await page.locator('#menu').getAttribute('class')).includes('is-on'));
   check('dragging a pick reorders the queue',
     same(await lineupTitles(), ['Moon Boat', 'Sleepy Foxes']), JSON.stringify(await lineupTitles()));
@@ -568,6 +584,7 @@ function writeWav(file, seconds) {
   check('"Play sooner" moves a pick up without dragging',
     same(await lineupTitles(), ['Sleepy Foxes', 'Moon Boat']), JSON.stringify(await lineupTitles()));
 
+  await page.locator('#picks').scrollIntoViewIfNeeded();
   const moonPick = await page.locator('#picks .pick').filter({ hasText: 'Moon Boat' }).boundingBox();
   await page.mouse.move(moonPick.x + moonPick.width / 2, moonPick.y + 40);
   await page.mouse.down();
