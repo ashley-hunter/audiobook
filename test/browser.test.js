@@ -312,6 +312,28 @@ function writeWav(file, seconds) {
   check('sleep timer set to 10 minutes',
     (await page.evaluate(() => App.player.currentSleepMinutes())) === 10);
 
+  const custom = page.locator('#timer-options .timer-custom input');
+  await page.locator('#open-sheet').click();
+  await page.waitForTimeout(500);
+  await custom.fill('45');
+  await custom.evaluate((n) => n.blur());
+  await page.waitForTimeout(300);
+  check('a typed number of minutes sets the timer',
+    (await page.evaluate(() => App.player.currentSleepMinutes())) === 45 &&
+    !(await page.locator('#sheet').getAttribute('class')).includes('is-open'));
+  await page.locator('#open-sheet').click();
+  await page.waitForTimeout(500);
+  check('and shows as the chosen option',
+    (await custom.inputValue()) === '45' &&
+    (await page.locator('#timer-options .timer-custom').getAttribute('class')).includes('is-on'));
+  await custom.fill('0');
+  await custom.evaluate((n) => n.blur());
+  await page.waitForTimeout(300);
+  check('a nonsense number is refused',
+    (await page.evaluate(() => App.player.currentSleepMinutes())) === 45);
+  await page.locator('#sheet-close').click();
+  await page.waitForTimeout(300);
+
   /* A fade in progress belongs to a countdown that is running. Pausing inside
    * the last twenty seconds and playing again used to leave the fade flagged as
    * already running, so it never restarted and the story was cut off at full
@@ -354,9 +376,7 @@ function writeWav(file, seconds) {
   await page.locator('#player-fav').click();
   await page.locator('#player-close').click();
   await page.waitForTimeout(500);
-  await page.locator('#tab-saved').click();
-  await page.waitForTimeout(300);
-  check('saved tab lists the favourite', (await page.locator('#saved-rows .row').count()) === 1);
+  check('there is no tab bar any more', (await page.locator('#tabbar').count()) === 0);
 
   await page.evaluate(() => App.player.checkpoint(true));
   await page.waitForTimeout(400);
@@ -394,49 +414,73 @@ function writeWav(file, seconds) {
   await page.locator('#add-close').click();
   await page.waitForTimeout(600);
 
-  check('the picks strip carries no numbers until someone chooses',
-    (await page.locator('#picks .pick-no').count()) === 0);
+  const lineupTitles = () => page.evaluate(() => App.debug.lineup().map((s) => s.title));
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  check('playing a story straight from the library queued it',
+    same(await lineupTitles(), ['Sleepy Foxes']), JSON.stringify(await lineupTitles()));
 
-  const moon3 = await page.locator('#moon-btn').boundingBox();
-  await page.mouse.move(moon3.x + moon3.width / 2, moon3.y + moon3.height / 2);
+  const rowTitles = () => page.evaluate(() =>
+    [].slice.call(document.querySelectorAll('#library-rows .row-title')).map((n) => n.textContent));
+  const libraryRow = (title) => page.locator('#library-rows .row').filter({ hasText: title });
+  check('a hearted story sits above a newer one',
+    same(await rowTitles(), ['Sleepy Foxes', 'Moon Boat']), JSON.stringify(await rowTitles()));
+  await libraryRow('Sleepy Foxes').locator('.row-heart').click();
+  await page.waitForTimeout(250);
+  check('and drops back to its place when unhearted',
+    same(await rowTitles(), ['Moon Boat', 'Sleepy Foxes']), JSON.stringify(await rowTitles()));
+
+  const fromMenu = async (title, label) => {
+    await libraryRow(title).locator('.row-more').click();
+    await page.waitForTimeout(250);
+    await page.locator('#menu-actions .confirm-btn', { hasText: label }).click();
+    await page.waitForTimeout(250);
+  };
+
+  await fromMenu('Sleepy Foxes', 'Take out');
+  check('an empty queue says how to fill it',
+    (await page.locator('#picks .pick').count()) === 0 && await page.locator('#picks-empty').isVisible());
+  check('the menu closes once a choice is made',
+    !(await page.locator('#menu').getAttribute('class')).includes('is-on'));
+
+  /* Queued in the opposite order to the library, which sorts newest first, so
+   * a queue that simply echoed the library would not pass this. */
+  await fromMenu('Sleepy Foxes', 'Add to tonight');
+  await fromMenu('Moon Boat', 'Add to tonight');
+  check('the row menu appends to the queue',
+    same(await lineupTitles(), ['Sleepy Foxes', 'Moon Boat']), JSON.stringify(await lineupTitles()));
+
+  // Hold the second pick, then drag it past the first.
+  await page.locator('#picks').scrollIntoViewIfNeeded();
+  const firstPick = await page.locator('#picks .pick').nth(0).boundingBox();
+  const secondPick = await page.locator('#picks .pick').nth(1).boundingBox();
+  await page.mouse.move(secondPick.x + secondPick.width / 2, secondPick.y + secondPick.height / 2);
   await page.mouse.down();
-  await page.waitForTimeout(3400);
+  await page.waitForTimeout(450);
+  await page.mouse.move(firstPick.x + 10, firstPick.y + firstPick.height / 2, { steps: 8 });
   await page.mouse.up();
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(300);
+  check('dragging a pick reorders the queue',
+    same(await lineupTitles(), ['Moon Boat', 'Sleepy Foxes']), JSON.stringify(await lineupTitles()));
+  check('and dropping it does not open the story',
+    !(await page.locator('#player').getAttribute('class')).includes('is-open'));
 
-  const pickToggle = (title) =>
-    page.locator('#lineup-list .stored').filter({ hasText: title }).locator('.pick-toggle');
+  await fromMenu('Sleepy Foxes', 'Play sooner');
+  check('"Play sooner" moves a pick up without dragging',
+    same(await lineupTitles(), ['Sleepy Foxes', 'Moon Boat']), JSON.stringify(await lineupTitles()));
 
-  check('parent controls offer every story for tonight',
-    (await page.locator('#lineup-list .pick-toggle').count()) === 2);
-
-  /* Tapped in the opposite order to the library, which sorts newest first, so
-   * a line-up that simply echoed the library would not pass this. */
-  await pickToggle('Sleepy Foxes').click();
-  await page.waitForTimeout(250);
-  await pickToggle('Moon Boat').click();
-  await page.waitForTimeout(250);
-
-  check('a picked story shows its place in the line-up',
-    (await pickToggle('Sleepy Foxes').textContent()) === '1' &&
-    (await pickToggle('Moon Boat').textContent()) === '2');
-
-  const lined = await page.evaluate(() => App.debug.lineup().map((s) => s.title));
-  check('the line-up is the order they were tapped, not the library order',
-    JSON.stringify(lined) === JSON.stringify(['Sleepy Foxes', 'Moon Boat']), JSON.stringify(lined));
-
-  await page.locator('#parent-close').click();
-  await page.waitForTimeout(600);
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(1200);
+  check('the queue survives a reload',
+    same(await lineupTitles(), ['Sleepy Foxes', 'Moon Boat']), JSON.stringify(await lineupTitles()));
 
   const strip = await page.evaluate(() => ({
     shown: !document.getElementById('picks-block').hidden,
     titles: [].slice.call(document.querySelectorAll('#picks .pick-title')).map((n) => n.textContent),
     numbers: [].slice.call(document.querySelectorAll('#picks .pick-no')).map((n) => n.textContent),
   }));
-  check('the home screen shows the line-up, in order and numbered',
-    strip.shown &&
-    JSON.stringify(strip.titles) === JSON.stringify(['Sleepy Foxes', 'Moon Boat']) &&
-    JSON.stringify(strip.numbers) === JSON.stringify(['1', '2']), JSON.stringify(strip));
+  check('the home screen shows the queue, in order and numbered',
+    strip.shown && same(strip.titles, ['Sleepy Foxes', 'Moon Boat']) && same(strip.numbers, ['1', '2']),
+    JSON.stringify(strip));
 
   await page.locator('#picks .pick button').first().click();
   await page.waitForTimeout(2000);
@@ -470,27 +514,54 @@ function writeWav(file, seconds) {
   check('the sleep timer carries across rather than starting again',
     advanced.sleep > 0 && advanced.sleep <= sleepBefore,
     `${sleepBefore} -> ${advanced.sleep}`);
-  check('the last story in the line-up has nothing up next', advanced.upnextHidden === true);
+  check('the last story in the queue has nothing up next', advanced.upnextHidden === true);
+  check('and the finished one has left the queue',
+    same(await lineupTitles(), ['Moon Boat']), JSON.stringify(await lineupTitles()));
 
-  await page.reload({ waitUntil: 'networkidle' });
+  /* ------------------------------------------- stopping after N stories */
+  await page.locator('#player-close').click();
+  await page.waitForTimeout(600);
+  await libraryRow('Sleepy Foxes').locator('.row-open').click();
   await page.waitForTimeout(1200);
-  const survived = await page.evaluate(() => App.debug.lineup().map((s) => s.title));
-  check('the line-up survives a reload',
-    JSON.stringify(survived) === JSON.stringify(['Sleepy Foxes', 'Moon Boat']), JSON.stringify(survived));
+  check('playing a story directly appends it to the queue',
+    same(await lineupTitles(), ['Moon Boat', 'Sleepy Foxes']), JSON.stringify(await lineupTitles()));
+  await page.locator('#player-close').click();
+  await page.waitForTimeout(600);
+  await page.locator('#picks .pick button').first().click();
+  await page.waitForTimeout(1500);
 
-  const moon4 = await page.locator('#moon-btn').boundingBox();
-  await page.mouse.move(moon4.x + moon4.width / 2, moon4.y + moon4.height / 2);
-  await page.mouse.down();
-  await page.waitForTimeout(3400);
-  await page.mouse.up();
-  await page.waitForTimeout(500);
-  await page.locator('#lineup-list .stored-btn').click();
+  await page.locator('#open-sheet').click();
   await page.waitForTimeout(400);
-  check('clearing the line-up hands the strip back to the app',
-    (await page.evaluate(() => App.debug.lineup().length)) === 0 &&
-    (await page.locator('#picks .pick-no').count()) === 0);
+  const storyRow = page.locator('#timer-options .timer-row').nth(1);
+  const storyChips = await storyRow.locator('.timer-opt').allTextContents();
+  check('the story counts on offer stop at what is queued',
+    same(storyChips, ['This one', '2']), JSON.stringify(storyChips));
+  await storyRow.locator('.timer-opt', { hasText: '2' }).click();
+  await page.waitForTimeout(1200);
+  check('the label counts the stories left',
+    (await page.locator('#sleep-label').textContent()) === 'Stops after this story and 1 more',
+    await page.locator('#sleep-label').textContent());
 
-  await page.locator('#parent-close').click();
+  await page.evaluate(() => App.player.seekTo(App.player.duration()));
+  await page.waitForFunction(
+    () => { const s = App.player.currentStory(); return !!s && s.title === 'Sleepy Foxes' && App.player.playing(); },
+    null, { timeout: 20000 }
+  );
+  await page.waitForTimeout(1200);
+  check('two stories runs on into the second',
+    (await page.locator('#sleep-label').textContent()) === 'Stops at the end of this story',
+    await page.locator('#sleep-label').textContent());
+
+  await page.evaluate(() => App.player.seekTo(App.player.duration()));
+  await page.waitForFunction(() => App.player.isAsleep(), null, { timeout: 20000 });
+  const counted = await page.evaluate(() => ({
+    playing: App.player.playing(),
+    curtain: document.getElementById('asleep').className.indexOf('is-on') >= 0,
+  }));
+  check('and the night ends when the second one does',
+    !counted.playing && counted.curtain, JSON.stringify(counted));
+  check('leaving the queue empty', (await lineupTitles()).length === 0, JSON.stringify(await lineupTitles()));
+
   await page.evaluate(async () => {
     const found = App.debug.stories().filter(function (s) { return s.title === 'Moon Boat'; });
     if (found.length) await App.store.deleteStory(found[0].id);
@@ -678,18 +749,6 @@ function writeWav(file, seconds) {
   const note = await old.evaluate(() => document.getElementById('storage-note').textContent);
   check('storage note falls back to bytes held',
     note.indexOf('play with no signal') >= 0 || note.indexOf('no signal') >= 0, note);
-
-  const capRows = await old.evaluate(() => {
-    return Array.prototype.map.call(document.querySelectorAll('#device-caps .cap'), (n) => ({
-      label: n.querySelector('.cap-label').textContent,
-      on: n.querySelector('.cap-mark').className.indexOf('is-on') >= 0,
-    }));
-  });
-  check('device list names the four capabilities', capRows.length === 4, JSON.stringify(capRows.map((r) => r.label)));
-  check('device list marks lock screen controls as missing',
-    capRows.length === 4 && capRows[1].on === false, JSON.stringify(capRows[1]));
-  check('device list still confirms offline playback',
-    capRows.length === 4 && capRows[0].on === true, JSON.stringify(capRows[0]));
 
   check('no JavaScript errors on the old device', oldErrors.length === 0, oldErrors.join(' | '));
 

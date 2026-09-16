@@ -25,7 +25,7 @@
 
 <div class="app" id="app">
 
-  <!-- ───────────────────────── library (Tonight / Saved) ───────────────────────── -->
+  <!-- ───────────────────────── library ───────────────────────── -->
   <div class="library" id="library">
 
     <section class="screen" id="screen-home">
@@ -56,6 +56,7 @@
       <section class="block" id="picks-block" hidden>
         <h2 class="display display-sm">Tonight&rsquo;s picks</h2>
         <div class="picks" id="picks"></div>
+        <p class="picks-empty" id="picks-empty">Nothing lined up yet. Play a story, or tap &hellip; on one below, to add it here.</p>
       </section>
 
       <div class="block block-row">
@@ -72,23 +73,7 @@
       </div>
     </section>
 
-    <section class="screen" id="screen-saved" hidden>
-      <header class="head">
-        <div class="head-text">
-          <h1 class="display display-xl">Saved stories</h1>
-          <p class="sub" id="saved-sub">Tap a heart to keep a story here</p>
-        </div>
-        <button class="chip-add chip-add-lg" id="add-btn-saved" type="button"><span class="plus">+</span>Add</button>
-      </header>
-      <div class="rows" id="saved-rows"></div>
-    </section>
-
   </div>
-
-  <nav class="tabbar" id="tabbar">
-    <button class="tab is-on" id="tab-home" type="button"><span class="tab-icon">&#9790;</span>Tonight</button>
-    <button class="tab" id="tab-saved" type="button"><span class="tab-icon">&#9829;</span>Saved</button>
-  </nav>
 
   <!-- ───────────────────────── player ───────────────────────── -->
   <div class="player" id="player" aria-hidden="true">
@@ -104,7 +89,7 @@
           </svg>
         </button>
         <span class="eyebrow eyebrow-dim">Tonight&rsquo;s story</span>
-        <button class="round round-sm heart" id="player-fav" type="button" aria-label="Save this story">&#9829;</button>
+        <button class="round round-sm heart" id="player-fav" type="button" aria-label="Heart this story">&#9829;</button>
       </div>
 
       <div class="player-mid">
@@ -191,12 +176,6 @@
         </button>
       </div>
 
-      <p class="section-label">Tonight&rsquo;s picks</p>
-      <div class="card card-pad">
-        <p class="muted muted-sm" id="lineup-note">Tap stories to line them up. They show on the home screen in this order, and each one runs on into the next.</p>
-      </div>
-      <div class="card" id="lineup-list" hidden></div>
-
       <p class="section-label">Playback</p>
       <div class="card" id="toggles"></div>
 
@@ -206,9 +185,6 @@
         <p class="muted muted-sm" id="storage-note">Stories are copied into this app, so they play with no signal.</p>
       </div>
       <div class="card" id="stored-list" hidden></div>
-
-      <p class="section-label">This device</p>
-      <div class="card" id="device-caps"></div>
 
       <p class="section-label">This week</p>
       <div class="card card-pad">
@@ -260,6 +236,14 @@
         <button class="confirm-btn" id="confirm-no" type="button">Keep it</button>
         <button class="confirm-btn is-destructive" id="confirm-yes" type="button">Remove</button>
       </div>
+    </div>
+  </div>
+
+  <div class="confirm" id="menu" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="menu-title">
+    <div class="confirm-scrim" id="menu-scrim"></div>
+    <div class="confirm-card">
+      <p class="display display-md" id="menu-title">&nbsp;</p>
+      <div class="menu-actions" id="menu-actions"></div>
     </div>
   </div>
 

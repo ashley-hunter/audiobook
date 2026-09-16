@@ -81,8 +81,6 @@
 
   --pad-x: 24px;
   --pad-top: 34px;
-  --tabbar-h: 72px;
-  --tabbar-gap: 18px;
   --disc: 250px;
   --playbtn: 104px;
   --ease: cubic-bezier(.32, .72, 0, 1);
@@ -93,8 +91,6 @@
 @media (max-height: 700px) {
   :root {
     --pad-top: 16px;
-    --tabbar-h: 64px;
-    --tabbar-gap: 12px;
     --disc: 176px;
     --playbtn: 86px;
   }
@@ -175,7 +171,7 @@ h1, h2, p { margin: 0; }
 .screen {
   display: block;
   padding: calc(var(--safe-top) + var(--pad-top)) var(--pad-x)
-           calc(var(--tabbar-h) + var(--tabbar-gap) + var(--safe-bottom) + 36px);
+           calc(var(--safe-bottom) + 36px);
 }
 
 .head { display: flex; align-items: flex-start; justify-content: space-between; }
@@ -264,10 +260,31 @@ h1, h2, p { margin: 0; }
 .block .display-sm { margin-bottom: 16px; }
 .block-row .display-sm { margin-bottom: 0; }
 
-.picks { display: -webkit-box; display: flex; flex-wrap: wrap; margin: 0 -8px; }
-.pick { width: 50%; box-sizing: border-box; padding: 0 8px; margin-bottom: 20px; }
+.picks {
+  display: flex;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 calc(-1 * var(--pad-x));
+  padding-left: calc(var(--pad-x) - 7px);
+}
+.picks::-webkit-scrollbar { display: none; }
+/* Safari drops a scroller's end padding, so the last gap is a flex item. */
+.picks::after { content: ''; flex: none; width: calc(var(--pad-x) - 7px); }
+.pick {
+  flex: none;
+  width: 136px;
+  padding: 0 7px;
+  margin-bottom: 4px;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.pick.is-dragging { position: relative; z-index: 2; opacity: .85; }
+.pick.is-dragging .pick-cover { box-shadow: 0 14px 34px rgba(0, 0, 0, .5); }
+.pick-btn { display: block; width: 100%; text-align: left; }
+.picks-empty { font-size: 14px; line-height: 1.5; color: var(--cream-50); }
 .pick-frame { display: block; position: relative; }
-.pick-cover { height: 150px; border-radius: 20px; width: 100%; }
+.pick-cover { height: 136px; border-radius: 20px; width: 100%; }
 .pick-no {
   position: absolute;
   top: 8px; left: 8px;
@@ -325,7 +342,8 @@ h1, h2, p { margin: 0; }
 .row-text { flex: 1; min-width: 0; margin-left: 14px; }
 .row-title { display: block; font-family: var(--display); font-weight: 600; font-size: 19px; line-height: 1.2; }
 .row-meta { display: block; margin-top: 4px; font-size: 13px; color: var(--cream-50); }
-.row-heart {
+.row-heart,
+.row-more {
   width: 44px; height: 44px;
   flex: none;
   border-radius: 50%;
@@ -340,34 +358,6 @@ h1, h2, p { margin: 0; }
 .empty { margin-top: 40px; text-align: center; color: var(--cream-55); line-height: 1.6; }
 .empty-title { margin-bottom: 8px; color: var(--cream); }
 .empty strong { color: var(--gold); }
-
-/* ---------- tab bar ---------- */
-.tabbar {
-  position: absolute;
-  left: var(--pad-x);
-  right: var(--pad-x);
-  bottom: calc(var(--tabbar-gap) + var(--safe-bottom));
-  height: var(--tabbar-h);
-  z-index: 5;
-  border-radius: 36px;
-  background: rgba(20, 22, 52, .72);
-  border: 1px solid var(--hairline);
-  -webkit-backdrop-filter: blur(22px);
-  backdrop-filter: blur(22px);
-  display: flex;
-  align-items: center;
-  justify-content: space-around;
-}
-.tab {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 80px;
-  font-size: 13px;
-  color: var(--cream-50);
-}
-.tab-icon { font-size: 18px; margin-bottom: 5px; }
-.tab.is-on { color: var(--gold); }
 
 /* ---------- player ---------- */
 .player {
@@ -564,25 +554,49 @@ h1, h2, p { margin: 0; }
 .sheet.is-open { transform: translateY(0); }
 .grabber { width: 44px; height: 5px; border-radius: 99px; background: rgba(255, 255, 255, .22); margin: 0 auto 22px; }
 .sheet .sub { margin-top: 6px; }
-.timer-options { margin-top: 24px; }
+.timer-options { margin-top: 18px; }
+.timer-group {
+  margin: 14px 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: rgba(244, 241, 234, .5);
+}
+.timer-row { display: flex; margin-right: -10px; }
 .timer-opt {
+  flex: 1;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  width: 100%;
+  justify-content: center;
+  min-width: 0;
+  min-height: 56px;
+  margin: 0 10px 0 0;
+  padding: 0 6px;
   box-sizing: border-box;
-  min-height: 62px;
-  margin-bottom: 12px;
-  padding: 0 22px;
-  border-radius: 20px;
-  font-size: 18px;
+  border-radius: 18px;
+  font-size: 17px;
   font-weight: 600;
   background: rgba(255, 255, 255, .06);
-  color: var(--cream);
+  color: inherit;
 }
-.timer-opt .note { font-size: 15px; font-weight: 400; color: rgba(244, 241, 234, .4); }
 .timer-opt.is-on { background: var(--gold); color: var(--ink); }
-.timer-opt.is-on .note { color: var(--ink); }
+.timer-custom input {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 17px;   /* 16px and up, or iOS zooms the page on focus */
+  text-align: center;
+}
+.timer-custom input::-webkit-inner-spin-button,
+.timer-custom input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.timer-custom input::placeholder { color: rgba(244, 241, 234, .4); }
+.timer-hint { margin-top: 10px; font-size: 13px; color: rgba(244, 241, 234, .4); }
 .wide-btn {
   display: flex;
   align-items: center;
@@ -850,58 +864,7 @@ audio { display: none; }
   display: flex;
   align-items: center;
 }
-.pick-toggle {
-  flex: none;
-  min-width: 36px;
-  min-height: 36px;
-  padding: 0 12px;
-  border-radius: 18px;
-  background: rgba(0, 0, 0, .06);
-  color: var(--paper-45);
-  font-size: 14px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.pick-toggle.is-on { background: var(--ink); color: var(--cream); }
-.pick-toggle[disabled] { opacity: .4; }
-.stored-btn {
-  width: 100%;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--paper-45);
-  background: none;
-}
-
 .row.is-missing .row-title { color: var(--cream-55); }
-
-/* device capability list in parent controls */
-.cap {
-  display: flex;
-  align-items: center;
-  padding: 14px 18px;
-  border-bottom: 1px solid rgba(0, 0, 0, .06);
-}
-.card > .cap:last-child { border-bottom: 0; }
-.cap-text { flex: 1; min-width: 0; margin-right: 14px; }
-.cap-label { font-size: 16px; }
-.cap-note { margin-top: 3px; font-size: 13px; color: var(--paper-45); line-height: 1.4; }
-.cap-mark {
-  flex: none;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 600;
-  background: rgba(0, 0, 0, .07);
-  color: var(--paper-45);
-}
-.cap-mark.is-on { background: rgba(76, 160, 122, .16); color: #34795A; }
 
 /* Progressive polish. Safari 12 ignores both, which costs it nothing, so each
    sits in its own rule - a selector list would be thrown away wholesale. */
@@ -987,6 +950,9 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
   background: rgba(0, 0, 0, .07);
 }
 .confirm-btn + .confirm-btn { margin-left: 10px; }
+.menu-actions { margin-top: 18px; }
+.menu-actions .confirm-btn { width: 100%; }
+.menu-actions .confirm-btn + .confirm-btn { margin: 10px 0 0; }
 .confirm-btn.is-destructive { background: #C0473E; color: #fff; }
 
 /* Scrubber. A real <input type="range"> rather than a hand-rolled bar: iOS

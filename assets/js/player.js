@@ -29,7 +29,10 @@ App.player = (function () {
   var sleepMinutes = 20;
   var sleepDeadline = 0;    // absolute ms while the timer is running, else 0
   var sleepRemaining = 20 * 60; // seconds left while the timer is paused
+  var storiesChosen = 0;    // stop after this many stories; 0 means the timer is in minutes
+  var sleepStories = 0;     // stories still to finish, this one included
   var fading = false;
+  var fadeTimer = null;
   var asleep = false;
   var usedServiceWorker = false;
   var lastSaved = 0;
@@ -236,6 +239,8 @@ App.player = (function () {
   /* --------------------------------------------------------- sleep timer */
 
   function armSleep(minutes) {
+    storiesChosen = 0;
+    sleepStories = 0;
     sleepMinutes = minutes;
     sleepRemaining = minutes * 60;
     sleepDeadline = playing() ? Date.now() + sleepRemaining * 1000 : 0;
@@ -245,12 +250,20 @@ App.player = (function () {
 
   // The countdown only runs while sound is actually coming out.
   function resumeSleep() {
+    if (storiesChosen) {
+      if (!sleepStories) sleepStories = storiesChosen;   // a new night after the last one ended
+      return;
+    }
     if (sleepDeadline) return;
     if (sleepRemaining <= 0) sleepRemaining = sleepMinutes * 60;
     sleepDeadline = Date.now() + sleepRemaining * 1000;
   }
 
   function suspendSleep() {
+    if (storiesChosen) {
+      fading = false;
+      return;
+    }
     if (!sleepDeadline) return;
     sleepRemaining = sleepLeft();
     sleepDeadline = 0;
@@ -268,6 +281,19 @@ App.player = (function () {
     emit('sleep', sleepLeft());
   }
 
+  /* Stops after `count` stories, counting the one playing now however far into
+   * it the child already is. The last one fades out over its closing seconds
+   * and the night ends when it does.
+   */
+  function setSleepStories(count) {
+    storiesChosen = count;
+    sleepStories = count;
+    sleepDeadline = 0;
+    fading = false;
+    restoreGain();
+    emit('sleep', sleepLeft());
+  }
+
   function defaultSleepMinutes(minutes) {
     sleepMinutes = minutes;
     sleepRemaining = minutes * 60;
@@ -281,6 +307,12 @@ App.player = (function () {
    */
   function carrySleep(seconds) {
     if (!(seconds > 0)) return;
+    if (storiesChosen) {   // the count already carries itself; `seconds` is stories left
+      fading = false;
+      restoreGain();
+      emit('sleep', sleepLeft());
+      return;
+    }
     sleepRemaining = seconds;
     sleepDeadline = playing() ? Date.now() + seconds * 1000 : 0;
     fading = false;
@@ -289,15 +321,20 @@ App.player = (function () {
   }
 
   function sleepLeft() {
+    // In story mode, anything above zero means the night is still going.
+    if (storiesChosen) return sleepStories ? Math.max(1, Math.round(duration() - position())) : 0;
     if (!sleepDeadline) return sleepRemaining;
     return Math.max(0, Math.round((sleepDeadline - Date.now()) / 1000));
   }
 
   function currentSleepMinutes() { return sleepMinutes; }
+  function currentSleepStories() { return sleepStories; }
+  function sleepByStories() { return storiesChosen; }
 
   function wake() {
     asleep = false;
-    armSleep(sleepMinutes);
+    if (storiesChosen) setSleepStories(storiesChosen);
+    else armSleep(sleepMinutes);
     return play();
   }
 
@@ -329,6 +366,12 @@ App.player = (function () {
     // so the fade is ready long before the timer needs it.
     if (isPlaying && ctx && !gain) connectGraph();
 
+    if (storiesChosen) {
+      emit('sleep', sleepLeft());
+      tickStoryFade(isPlaying);
+      return;
+    }
+
     if (!sleepDeadline || !isPlaying) {
       emit('sleep', sleepLeft());
       return;
@@ -341,6 +384,18 @@ App.player = (function () {
       finishSleep();
     } else if (left <= FADE_SECONDS && !fading) {
       startFade(left);
+    }
+  }
+
+  function tickStoryFade(isPlaying) {
+    var tail = duration() - position();
+    if (!isPlaying || sleepStories !== 1 || !(duration() > 0)) return;
+    if (!fading && tail <= FADE_SECONDS) {
+      startFade(tail);
+    } else if (fading && tail > FADE_SECONDS + 2) {
+      // Scrubbed back out of the ending: full volume until it comes round again.
+      fading = false;
+      restoreGain();
     }
   }
 
@@ -396,11 +451,12 @@ App.player = (function () {
   function fadeWithVolume(seconds) {
     var startedAt = Date.now();
     var from = audio.volume;
-    var handle = setInterval(function () {
+    clearInterval(fadeTimer);
+    fadeTimer = setInterval(function () {
       var elapsed = (Date.now() - startedAt) / 1000;
       var ratio = Math.max(0, 1 - elapsed / seconds);
       try { audio.volume = from * ratio * ratio; } catch (err) { void err; }
-      if (ratio <= 0 || audio.paused) clearInterval(handle);
+      if (ratio <= 0 || audio.paused) clearInterval(fadeTimer);
     }, 120);
   }
 
@@ -491,6 +547,7 @@ App.player = (function () {
 
   // Whatever happened last night, the story starts at full volume.
   function restoreGain() {
+    clearInterval(fadeTimer);   // or a fade still running pulls the volume back down
     if (gain && ctx) {
       try {
         var now = ctx.currentTime;
@@ -508,6 +565,9 @@ App.player = (function () {
 
   function checkpoint(force) {
     if (!story) return;
+    // onEnded already put a finished story back to the start. Saving the end
+    // position over that would make its next play finish straight away.
+    if (audio && audio.ended) return;
     var pos = position();
     if (!force && Math.abs(pos - lastSaved) < SAVE_EVERY) return;
     lastSaved = pos;
@@ -526,15 +586,29 @@ App.player = (function () {
   }
 
   function onEnded() {
-    var carried = sleepLeft();    // read before the reset below throws it away
-    sleepDeadline = 0;
-    sleepRemaining = sleepMinutes * 60;
+    var carried;
+    if (storiesChosen) {
+      sleepStories = Math.max(0, sleepStories - 1);
+      carried = sleepStories;
+      fading = false;
+      restoreGain();
+    } else {
+      carried = sleepLeft();      // read before the reset below throws it away
+      sleepDeadline = 0;
+      sleepRemaining = sleepMinutes * 60;
+    }
 
     if (story) {
       story.pos = 0;
       App.store.patchStory(story.id, { pos: 0 })['catch'](function () { return null; });
     }
     emit('ended', carried);
+    // After `ended`, whose handler clears the curtain for the story that follows.
+    if (storiesChosen && !carried) {
+      asleep = true;
+      recordNight(true);
+      emit('asleep');
+    }
   }
 
   function onAudioError() {
@@ -574,9 +648,12 @@ App.player = (function () {
     playing: playing,
     currentStory: currentStory,
     setSleepMinutes: setSleepMinutes,
+    setSleepStories: setSleepStories,
     carrySleep: carrySleep,
     defaultSleepMinutes: defaultSleepMinutes,
     currentSleepMinutes: currentSleepMinutes,
+    currentSleepStories: currentSleepStories,
+    sleepByStories: sleepByStories,
     sleepLeft: sleepLeft,
     fadeLevel: function () { return gain ? gain.gain.value : null; },
     isAsleep: function () { return asleep; },

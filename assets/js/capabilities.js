@@ -233,44 +233,6 @@ App.caps = (function () {
     }
   }
 
-  /* ---------------------------------------------------------------- report */
-
-  /* Feeds the "This device" list in parent controls. Making the fallbacks
-   * visible is the point: on an iPhone 6 you can see at a glance that lock
-   * screen controls are gone and that iOS may reclaim the stored audio.
-   */
-  function report(extra) {
-    var rows = [
-      {
-        label: 'Plays with no signal',
-        ok: has.serviceWorker,
-        note: has.serviceWorker ? 'Stories are held on this phone' : 'This browser cannot cache the app'
-      },
-      {
-        label: 'Lock screen controls',
-        ok: has.mediaSession,
-        note: has.mediaSession ? 'Title and play controls on the lock screen' : 'Not available before iOS 15'
-      },
-      {
-        label: 'Ignores the silent switch',
-        ok: has.audioSession,
-        note: has.audioSession ? 'Audio is marked as playback' : 'Not available before iOS 16.4'
-      },
-      {
-        label: 'Protected storage',
-        ok: (extra && extra.persisted) === true,
-        note: storageNote(extra)
-      }
-    ];
-    return rows;
-  }
-
-  function storageNote(extra) {
-    if (!has.persistentStorage) return 'Not available before iOS 15.2 - iOS may clear stored audio';
-    if (extra && extra.persisted === true) return 'This phone has promised to keep the audio';
-    return 'Not granted yet - add a story and reopen this screen';
-  }
-
   return {
     supports: supports,
     readArrayBuffer: readArrayBuffer,
@@ -281,7 +243,6 @@ App.caps = (function () {
     claimPlaybackAudio: claimPlaybackAudio,
     media: media,
     onInstallAvailable: onInstallAvailable,
-    promptInstall: promptInstall,
-    report: report
+    promptInstall: promptInstall
   };
 })();

@@ -16,7 +16,6 @@ window.App = window.App || {};
   var HOLD_MS = 3000;       // how long the moon must be held to reach parent controls
 
   var stories = [];
-  var tab = 'home';
   var mood = 'All';
   var currentId = null;
   var importRows = {};
@@ -26,6 +25,7 @@ window.App = window.App || {};
   var spaceEstimate = null;    // null on browsers that will not say
   var importing = false;       // chunks are being written; do not reload
   var scrubbing = false;       // a finger is on the position slider
+  var suppressClickUntil = 0;  // a pick was just dropped; its click is not a tap
 
   /* ==================================================================== boot */
 
@@ -78,10 +78,18 @@ window.App = window.App || {};
     // forces a check for a new worker rather than reusing an HTTP cached one.
     // Its rejection has to be returned, or an offline launch - the normal case
     // for this app - raises an unhandled rejection on every boot.
-    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
-      .then(function (reg) {
+    var registered = navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' });
+    function checkForUpdate() {
+      registered.then(function (reg) {
         return reg && reg.update ? reg.update() : null;
       })['catch'](function () { return null; });
+    }
+    checkForUpdate();
+    // iOS resumes a Home Screen app far more often than it relaunches one, so
+    // a check that only ran at boot would rarely run at all.
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) checkForUpdate();
+    }, false);
 
     /* A deploy ships a worker with a new build id, which claims this page the
      * moment it activates. The HTML and scripts already running are still the
@@ -130,7 +138,7 @@ window.App = window.App || {};
   }
 
   function anythingOpen() {
-    var ids = ['player', 'add', 'parent', 'sheet', 'confirm'];
+    var ids = ['player', 'add', 'parent', 'sheet', 'confirm', 'menu'];
     for (var i = 0; i < ids.length; i++) {
       var node = $(ids[i]);
       if (!node) continue;
@@ -174,7 +182,6 @@ window.App = window.App || {};
     }).then(function (estimate) {
       spaceEstimate = estimate;
       renderStorage();
-      renderDeviceCaps();
     })['catch'](function () { return null; });
   }
 
@@ -188,8 +195,11 @@ window.App = window.App || {};
 
   /* ================================================================== data */
 
+  // Hearted stories first, then newest first.
   function sortStories(list) {
-    return list.slice().sort(function (a, b) { return (b.addedAt || 0) - (a.addedAt || 0); });
+    return list.slice().sort(function (a, b) {
+      return (b.fav ? 1 : 0) - (a.fav ? 1 : 0) || (b.addedAt || 0) - (a.addedAt || 0);
+    });
   }
 
   function byId(id) {
@@ -209,22 +219,25 @@ window.App = window.App || {};
     return list.filter(function (s) { return s.mood === mood; });
   }
 
-  /* Tonight's line-up.
+  /* Tonight's picks: the queue.
    *
-   * A grown-up taps stories in parent controls to line them up; `pickAt` is the
-   * moment each was tapped, so the order is simply the order they were chosen.
-   * This is the app's whole answer to "what's on tonight" and "what's up next" -
-   * the home screen shows the line-up in order, and each story runs on into the
-   * one after it.
-   *
-   * With nothing chosen it falls back to the newest few, so a library that has
-   * never been curated still has a home screen worth looking at, and one story
-   * still ends the night rather than rolling into the rest of the library.
+   * `pickAt` orders it. Adding from a row's menu appends, playing a story
+   * straight from the library appends it too, and a story leaves the queue
+   * once it has played to the end, so the queue is always what is still to
+   * come. Each story runs on into the one after it.
    */
   function lineup() {
     return visibleStories().filter(function (s) {
       return s.pickAt && !s.missing;
     }).sort(function (a, b) { return a.pickAt - b.pickAt; });
+  }
+
+  function queuedAfter(id) {
+    var chosen = lineup();
+    for (var i = 0; i < chosen.length; i++) {
+      if (chosen[i].id === id) return chosen.length - i - 1;
+    }
+    return 0;
   }
 
   function nextAfter(id) {
@@ -347,17 +360,8 @@ window.App = window.App || {};
 
   function renderAll() {
     renderHome();
-    renderSaved();
     renderPlayer();
     renderParent();
-    renderTabs();
-  }
-
-  function renderTabs() {
-    ui.toggleClass($('tab-home'), 'is-on', tab === 'home');
-    ui.toggleClass($('tab-saved'), 'is-on', tab === 'saved');
-    ui.show($('screen-home'), tab === 'home');
-    ui.show($('screen-saved'), tab === 'saved');
   }
 
   function renderHome() {
@@ -377,13 +381,9 @@ window.App = window.App || {};
 
     var visible = visibleStories();
     var chosen = lineup();
-    var picks = chosen.length ? chosen : visible.filter(function (s) {
-      return (!keep || s.id !== keep.id) && !s.missing;
-    }).slice(0, 4);
-    // Two is the point at which the automatic strip reads as a choice rather
-    // than a repeat of the library. One deliberately chosen story always shows.
-    ui.show($('picks-block'), chosen.length ? picks.length > 0 : picks.length >= 2);
-    renderPicks(picks, chosen.length > 0);
+    ui.show($('picks-block'), visible.length > 0);
+    ui.show($('picks-empty'), !chosen.length);
+    renderPicks(chosen);
 
     renderMoods(visible);
     renderRows($('library-rows'), filteredStories());
@@ -437,7 +437,7 @@ window.App = window.App || {};
     return minutesNow >= minutesBed && now.getHours() >= 12;
   }
 
-  function renderPicks(picks, numbered) {
+  function renderPicks(picks) {
     var host = $('picks');
     ui.clear(host);
     picks.forEach(function (story, index) {
@@ -448,14 +448,11 @@ window.App = window.App || {};
       var cover = ui.el('span', 'cover pick-cover');
       ui.paintCover(cover, story);
       frame.appendChild(cover);
-      // The number is what tells a child which story is first tonight, so it
-      // only appears when a grown-up actually put them in an order.
-      if (numbered) frame.appendChild(ui.el('span', 'pick-no', String(index + 1)));
+      frame.appendChild(ui.el('span', 'pick-no', String(index + 1)));
       button.appendChild(frame);
       button.appendChild(ui.el('span', 'pick-title', story.title));
       button.appendChild(ui.el('span', 'pick-mins', ui.minutes(story.len)));
-      button.style.display = 'block';
-      button.style.width = '100%';
+      button.className = 'pick-btn';
       button.onclick = function () { openStory(story.id); };
       wrap.appendChild(button);
       host.appendChild(wrap);
@@ -500,7 +497,7 @@ window.App = window.App || {};
 
       var heart = ui.el('button', 'row-heart' + (story.fav ? ' is-on' : ''), '♥');
       heart.type = 'button';
-      heart.setAttribute('aria-label', story.fav ? 'Remove from saved' : 'Save this story');
+      heart.setAttribute('aria-label', story.fav ? 'Unheart this story' : 'Heart this story');
       heart.onclick = function (event) {
         event.stopPropagation();
         toggleFav(story.id);
@@ -508,6 +505,13 @@ window.App = window.App || {};
 
       row.appendChild(open);
       row.appendChild(heart);
+      if (!story.missing) {
+        var more = ui.el('button', 'row-more', '\u22ef');
+        more.type = 'button';
+        more.setAttribute('aria-label', 'More for ' + story.title);
+        more.onclick = function () { openStoryMenu(story); };
+        row.appendChild(more);
+      }
       host.appendChild(row);
     });
   }
@@ -518,15 +522,6 @@ window.App = window.App || {};
     if (story.narrator && story.narrator !== 'you') parts.push('read by ' + story.narrator);
     else parts.push('added by you');
     return parts.join(' · ');
-  }
-
-  function renderSaved() {
-    var saved = visibleStories().filter(function (s) { return s.fav; });
-    renderRows($('saved-rows'), saved);
-    var label;
-    if (!saved.length) label = 'Tap a heart to keep a story here';
-    else label = saved.length + (saved.length === 1 ? ' story' : ' stories') + ' kept for later';
-    ui.text($('saved-sub'), label);
   }
 
   /* ================================================================ player */
@@ -634,32 +629,94 @@ window.App = window.App || {};
     updateProgress(App.player.position(), App.player.duration());
   }
 
+  var TIMER_MINUTES = [10, 20, 30];
+  var MAX_MINUTES = 240;
+  var MAX_STORIES = 4;
+
+  /* Two ways to end the night: a number of minutes, or a number of stories.
+   * The story that is playing counts as one however far into it the child is,
+   * and the rest come from tonight's picks, so the counts on offer stop at
+   * however many are lined up after it.
+   */
   function renderTimerOptions() {
     var host = $('timer-options');
     var story = current();
-    var left = story ? Math.max(1, Math.ceil(((story.len || 0) - App.player.position()) / 60)) : 30;
-    var chosen = App.player.currentSleepMinutes();
-    var options = [
-      { m: 10, label: '10 minutes', note: 'a short one' },
-      { m: 20, label: '20 minutes', note: '' },
-      { m: 30, label: '30 minutes', note: 'a long one' },
-      { m: left, label: 'End of the story', note: left + ' min' }
-    ];
+    var byStories = App.player.sleepByStories();
+    var minutes = byStories ? 0 : App.player.currentSleepMinutes();
     ui.clear(host);
-    options.forEach(function (option) {
-      var on = chosen === option.m;
-      var button = ui.el('button', 'timer-opt' + (on ? ' is-on' : ''));
-      button.type = 'button';
-      button.appendChild(document.createTextNode(option.label));
-      button.appendChild(ui.el('span', 'note', on ? '✓' : option.note));
-      button.onclick = function () {
-        App.player.setSleepMinutes(option.m);
-        closeSheet();
-        renderTimerOptions();
-        App.player.play();
-      };
-      host.appendChild(button);
+
+    host.appendChild(ui.el('p', 'timer-group', 'Minutes'));
+    var row = ui.el('div', 'timer-row');
+    TIMER_MINUTES.forEach(function (m) {
+      row.appendChild(timerChip(String(m), minutes === m, function () { App.player.setSleepMinutes(m); }));
     });
+    row.appendChild(customMinutes(TIMER_MINUTES.indexOf(minutes) < 0 ? minutes : 0));
+    host.appendChild(row);
+
+    host.appendChild(ui.el('p', 'timer-group', 'Stories'));
+    row = ui.el('div', 'timer-row');
+    var most = Math.min(MAX_STORIES, 1 + (story ? queuedAfter(story.id) : 0));
+    for (var n = 1; n <= most; n++) row.appendChild(storyChip(n, byStories === n));
+    host.appendChild(row);
+    if (most === 1) {
+      host.appendChild(ui.el('p', 'timer-hint', 'Line up more of tonight\u2019s picks to play several in a row.'));
+    }
+  }
+
+  function storyChip(count, on) {
+    return timerChip(count === 1 ? 'This one' : String(count), on, function () {
+      App.player.setSleepStories(count);
+    });
+  }
+
+  function timerChip(label, on, choose) {
+    var button = ui.el('button', 'timer-opt' + (on ? ' is-on' : ''), label);
+    button.type = 'button';
+    button.onclick = function () { chooseTimer(choose); };
+    return button;
+  }
+
+  function chooseTimer(choose) {
+    choose();
+    closeSheet();
+    renderTimerOptions();
+    App.player.play();
+  }
+
+  // The keypad on iOS has no return key, so the value is taken on `change`,
+  // which fires when its Done button closes the keyboard.
+  function customMinutes(value) {
+    var wrap = ui.el('label', 'timer-opt timer-custom' + (value ? ' is-on' : ''));
+    var input = document.createElement('input');
+    input.type = 'number';
+    input.min = '1';
+    input.max = String(MAX_MINUTES);
+    input.step = '1';
+    input.setAttribute('pattern', '[0-9]*');   // the number pad on iOS 12
+    input.setAttribute('inputmode', 'numeric');
+    input.setAttribute('aria-label', 'Other number of minutes');
+    input.placeholder = 'Other';
+    if (value) input.value = String(value);
+    input.onchange = function () {
+      var minutes = parseInt(input.value, 10);
+      if (!(minutes >= 1 && minutes <= MAX_MINUTES)) {
+        ui.toast('Pick between 1 and ' + MAX_MINUTES + ' minutes.');
+        input.value = value ? String(value) : '';
+        return;
+      }
+      chooseTimer(function () { App.player.setSleepMinutes(minutes); });
+    };
+    wrap.appendChild(input);
+    return wrap;
+  }
+
+  function sleepLabel(secondsLeft) {
+    var stories = App.player.sleepByStories() ? App.player.currentSleepStories() : 0;
+    if (stories === 1) return 'Stops at the end of this story';
+    if (stories > 1) return 'Stops after this story and ' + (stories - 1) + ' more';
+    return secondsLeft > 0
+      ? 'Sleep timer · ' + Math.ceil(secondsLeft / 60) + ' min left'
+      : 'Sleep timer finished';
   }
 
   function wirePlayerEvents() {
@@ -672,9 +729,7 @@ window.App = window.App || {};
         if (isPlaying) ui.toggleClass($('asleep'), 'is-on', false);
       },
       sleep: function (secondsLeft) {
-        ui.text($('sleep-label'), secondsLeft > 0
-          ? 'Sleep timer · ' + Math.ceil(secondsLeft / 60) + ' min left'
-          : 'Sleep timer finished');
+        ui.text($('sleep-label'), sleepLabel(secondsLeft));
       },
       asleep: function () {
         ui.toggleClass($('asleep'), 'is-on', true);
@@ -682,7 +737,7 @@ window.App = window.App || {};
       ended: function (sleepCarried) {
         ui.toggleClass($('asleep'), 'is-on', false);
         var next = nextAfter(currentId);
-        renderHome();
+        unqueue(currentId);
         /* Only a deliberate line-up runs on. Falling out of one story and into
          * the rest of the library at bedtime is the opposite of what this app
          * is for, and a countdown already at zero means the night is over. */
@@ -708,6 +763,7 @@ window.App = window.App || {};
       return;
     }
     currentId = id;
+    if (!opts.carrySleep) queue(id);
     openPlayer();
     var resume = App.settings.get().resume === false ? 0 : (story.pos || 0);
     App.player.load(story, { autoplay: true, startAt: resume })['catch'](function (err) {
@@ -728,8 +784,8 @@ window.App = window.App || {};
     if (!story) return;
     story.fav = !story.fav;
     App.store.patchStory(id, { fav: story.fav })['catch'](function () { return null; });
+    stories = sortStories(stories);
     renderHome();
-    renderSaved();
     if (current() && current().id === id) ui.toggleClass($('player-fav'), 'is-on', story.fav);
   }
 
@@ -737,7 +793,6 @@ window.App = window.App || {};
 
   function renderParent() {
     var settings = App.settings.get();
-    renderDeviceCaps();
     ui.text($('parent-name'), settings.childName || 'Your child');
     ui.text($('ours-name'), settings.childName ? settings.childName + '’s' : 'the');
     ui.toggleClass($('ours-switch'), 'is-on', !!settings.showOurs);
@@ -746,90 +801,202 @@ window.App = window.App || {};
     var count = stories.length;
     ui.text($('added-count'), count ? count + (count === 1 ? ' file' : ' files') : 'None yet');
 
-    renderLineup();
     renderToggles();
     renderStorage();
     renderWeek();
   }
 
-  /* The line-up editor. Every story gets one button: tap to add it to tonight,
-   * tap its number to take it out again. Tap order is the play order, which
-   * saves inventing a way to drag rows around on a phone.
-   */
-  function renderLineup() {
-    var host = $('lineup-list');
-    if (!host) return;
-
-    var chosen = lineup();
-    var place = {};
-    chosen.forEach(function (story, index) { place[story.id] = index + 1; });
-
-    ui.text($('lineup-note'), chosen.length
-      ? chosen.length + (chosen.length === 1 ? ' story' : ' stories')
-        + ' lined up. They show on the home screen in this order, and each one runs on into the next.'
-      : 'Tap stories to line them up. With none chosen the home screen shows the newest few.');
-
-    ui.clear(host);
-    ui.show(host, stories.length > 0);
-
-    stories.forEach(function (story) {
-      var row = ui.el('div', 'stored');
-      var textWrap = ui.el('div', 'stored-text');
-      textWrap.appendChild(ui.el('p', 'stored-name', story.title));
-      textWrap.appendChild(ui.el('p', 'stored-meta' + (story.missing ? ' is-missing' : ''),
-        story.missing ? 'Audio was cleared by iOS' : ui.minutes(story.len)));
-
-      var at = place[story.id];
-      var pick = ui.el('button', 'pick-toggle' + (at ? ' is-on' : ''), at ? String(at) : 'Add');
-      pick.type = 'button';
-      pick.disabled = !!story.missing;
-      pick.setAttribute('aria-pressed', at ? 'true' : 'false');
-      pick.setAttribute('aria-label', at
-        ? 'Take ' + story.title + ' out of tonight\u2019s picks'
-        : 'Add ' + story.title + ' to tonight\u2019s picks');
-      pick.onclick = function () { togglePick(story.id); };
-
-      row.appendChild(textWrap);
-      row.appendChild(pick);
-      host.appendChild(row);
-    });
-
-    if (chosen.length) {
-      var clear = ui.el('button', 'stored stored-btn', 'Clear tonight\u2019s picks');
-      clear.type = 'button';
-      clear.onclick = clearLineup;
-      host.appendChild(clear);
-    }
-  }
-
   function togglePick(id) {
     var story = byId(id);
-    if (!story || story.missing) return;
+    if (story && story.pickAt) unqueue(id);
+    else queue(id);
+  }
 
-    if (story.pickAt) {
-      story.pickAt = 0;
-    } else {
-      /* Two taps inside the same millisecond would tie, and a tie has no
-       * order. Nudging past the last one keeps the sequence strict. */
-      var last = 0;
-      lineup().forEach(function (s) { if (s.pickAt > last) last = s.pickAt; });
-      story.pickAt = Math.max(Date.now(), last + 1);
-    }
+  function queue(id) {
+    var story = byId(id);
+    if (!story || story.missing || story.pickAt) return;
+    /* Two taps inside the same millisecond would tie, and a tie has no order.
+     * Nudging past the last one keeps the sequence strict. */
+    var last = 0;
+    stories.forEach(function (s) { if (s.pickAt > last) last = s.pickAt; });
+    setPick(story, Math.max(Date.now(), last + 1));
+    lineupChanged();
+  }
 
-    App.store.patchStory(id, { pickAt: story.pickAt })['catch'](function () { return null; });
-    renderLineup();
+  function unqueue(id) {
+    var story = byId(id);
+    if (story && story.pickAt) setPick(story, 0);
+    lineupChanged();
+  }
+
+  function setPick(story, pickAt) {
+    story.pickAt = pickAt;
+    App.store.patchStory(story.id, { pickAt: pickAt })['catch'](function () { return null; });
+  }
+
+  /* Moves a story within the line-up by handing the existing pickAt values out
+   * again in the new order, so the sequence stays strictly increasing.
+   */
+  function movePick(from, to) {
+    var chosen = lineup();
+    if (from === to || from < 0 || to < 0 || from >= chosen.length || to >= chosen.length) return;
+    var slots = chosen.map(function (s) { return s.pickAt; });
+    chosen.splice(to, 0, chosen.splice(from, 1)[0]);
+    chosen.forEach(function (story, index) {
+      if (story.pickAt !== slots[index]) setPick(story, slots[index]);
+    });
+    lineupChanged();
+  }
+
+  function lineupChanged() {
     renderHome();
     renderUpNext();
   }
 
-  function clearLineup() {
-    lineup().forEach(function (story) {
-      story.pickAt = 0;
-      App.store.patchStory(story.id, { pickAt: 0 })['catch'](function () { return null; });
+  /* The menu behind each row's ellipsis button. "Play sooner" is also the way
+   * to reorder without dragging, for anyone who cannot hold and drag.
+   */
+  function openStoryMenu(story) {
+    var chosen = lineup();
+    var at = chosen.indexOf(story);
+    var items = [
+      at >= 0
+        ? { label: 'Take out of tonight\u2019s picks', run: function () { togglePick(story.id); } }
+        : { label: 'Add to tonight\u2019s picks', run: function () { togglePick(story.id); } }
+    ];
+    if (at > 0) items.push({ label: 'Play sooner', run: function () { movePick(at, at - 1); } });
+    items.push({ label: 'Cancel', run: null });
+
+    var node = $('menu');
+    var host = $('menu-actions');
+    function close() {
+      ui.toggleClass(node, 'is-on', false);
+      node.setAttribute('aria-hidden', 'true');
+    }
+    ui.text($('menu-title'), story.title);
+    ui.clear(host);
+    items.forEach(function (item) {
+      var button = ui.el('button', 'confirm-btn', item.label);
+      button.type = 'button';
+      button.onclick = function () {
+        close();
+        if (item.run) item.run();
+      };
+      host.appendChild(button);
     });
-    renderLineup();
-    renderHome();
-    renderUpNext();
+    $('menu-scrim').onclick = close;
+    ui.toggleClass(node, 'is-on', true);
+    node.setAttribute('aria-hidden', 'false');
+  }
+
+  /* Press and hold a pick, then drag it along the strip. The other picks make
+   * way as it passes them, and the strip scrolls when it is held near an edge.
+   * Touch events rather than HTML drag and drop or pointer events, neither of
+   * which an iPhone on iOS 12 has. Mouse is wired too, for desktop and tests.
+   */
+  var DRAG_HOLD_MS = 300;
+  var DRAG_EDGE = 44;        // px from the strip's edge that starts it scrolling
+
+  function wirePicksDrag() {
+    var host = $('picks');
+    var drag = null;
+
+    function point(event) {
+      var touch = event.touches ? (event.touches[0] || event.changedTouches[0]) : event;
+      return { x: touch.clientX, y: touch.clientY };
+    }
+
+    function start(event) {
+      if (drag) return;
+      var node = event.target;
+      while (node && node.parentNode !== host) node = node.parentNode;
+      if (!node) return;
+      var p = point(event);
+      drag = { node: node, start: p, last: p, on: false, from: indexIn(node), shift: 0 };
+      drag.timer = setTimeout(function () {
+        drag.on = true;
+        drag.grab = p.x - node.getBoundingClientRect().left;   // finger's place on the cover
+        drag.scroller = setInterval(edgeScroll, 16);
+        ui.toggleClass(node, 'is-dragging', true);
+      }, DRAG_HOLD_MS);
+    }
+
+    function move(event) {
+      if (!drag) return;
+      var p = point(event);
+      if (!drag.on) {
+        var dx = p.x - drag.start.x;
+        var dy = p.y - drag.start.y;
+        if (dx * dx + dy * dy > 100) stop();   // moved before the hold: a scroll
+        return;
+      }
+      event.preventDefault();
+      drag.last = p;
+      follow();
+    }
+
+    // Keeps the dragged pick under the finger, and moves it past any neighbour
+    // whose middle the finger has crossed.
+    function follow() {
+      var node = drag.node;
+      var x = drag.last.x;
+      var prev = node.previousElementSibling;
+      var next = node.nextElementSibling;
+      if (prev && x < middle(prev)) host.insertBefore(node, prev);
+      else if (next && x > middle(next)) host.insertBefore(node, next.nextElementSibling);
+      var left = node.getBoundingClientRect().left - drag.shift;   // where the row puts it
+      drag.shift = x - drag.grab - left;
+      node.style.transform = 'translateX(' + drag.shift + 'px)';
+    }
+
+    function edgeScroll() {
+      if (!drag || !drag.on) return;
+      var box = host.getBoundingClientRect();
+      var step = 0;
+      if (drag.last.x < box.left + DRAG_EDGE) step = -8;
+      else if (drag.last.x > box.right - DRAG_EDGE) step = 8;
+      if (!step) return;
+      var before = host.scrollLeft;
+      host.scrollLeft = before + step;
+      if (host.scrollLeft !== before) follow();
+    }
+
+    function stop() {
+      if (!drag) return;
+      var done = drag;
+      drag = null;
+      clearTimeout(done.timer);
+      clearInterval(done.scroller);
+      if (!done.on) return;
+      done.node.style.transform = '';
+      ui.toggleClass(done.node, 'is-dragging', false);
+      suppressClickUntil = Date.now() + 500;
+      // -1 if the strip was rebuilt mid-drag, in which case there is nothing to move.
+      var to = indexIn(done.node);
+      if (to >= 0) movePick(done.from, to);
+    }
+
+    function indexIn(node) { return [].indexOf.call(host.children, node); }
+
+    function middle(node) {
+      var box = node.getBoundingClientRect();
+      return box.left + box.width / 2;
+    }
+
+    host.addEventListener('touchstart', start, false);
+    host.addEventListener('touchmove', move, { passive: false });
+    host.addEventListener('touchend', stop, false);
+    host.addEventListener('touchcancel', stop, false);
+    host.addEventListener('mousedown', start, false);
+    document.addEventListener('mousemove', move, false);
+    document.addEventListener('mouseup', stop, false);
+    host.addEventListener('contextmenu', function (event) { event.preventDefault(); }, false);
+    // Lifting the finger after a drag would otherwise open the story.
+    host.addEventListener('click', function (event) {
+      if (Date.now() > suppressClickUntil) return;
+      event.stopPropagation();
+      event.preventDefault();
+    }, true);
   }
 
   function renderToggles() {
@@ -895,23 +1062,6 @@ window.App = window.App || {};
     if (persistedState === true) parts.push('this phone has promised to keep them');
     else if (persistedState === false) parts.push('iOS may reclaim them if space runs short');
     return parts.join(' · ');
-  }
-
-  // Shows what this particular phone can and cannot do, so the fallbacks are
-  // visible rather than mysterious.
-  function renderDeviceCaps() {
-    var host = $('device-caps');
-    if (!host) return;
-    ui.clear(host);
-    App.caps.report({ persisted: persistedState }).forEach(function (row) {
-      var node = ui.el('div', 'cap');
-      var textWrap = ui.el('div', 'cap-text');
-      textWrap.appendChild(ui.el('p', 'cap-label', row.label));
-      textWrap.appendChild(ui.el('p', 'cap-note', row.note));
-      node.appendChild(textWrap);
-      node.appendChild(ui.el('span', 'cap-mark' + (row.ok ? ' is-on' : ''), row.ok ? '✓' : '–'));
-      host.appendChild(node);
-    });
   }
 
   /* An in-app confirmation rather than window.confirm, which a Home Screen web
@@ -1126,11 +1276,8 @@ window.App = window.App || {};
   /* ================================================================= events */
 
   function wireControls() {
-    $('tab-home').onclick = function () { tab = 'home'; renderTabs(); scrollTop(); };
-    $('tab-saved').onclick = function () { tab = 'saved'; renderTabs(); scrollTop(); };
-
     $('player-close').onclick = closePlayer;
-    $('to-library').onclick = function () { tab = 'home'; renderTabs(); closePlayer(); };
+    $('to-library').onclick = function () { scrollTop(); closePlayer(); };
     $('playbtn').onclick = function () {
       if (!App.player.currentStory()) {
         var story = current();
@@ -1151,7 +1298,6 @@ window.App = window.App || {};
     };
 
     $('add-btn').onclick = openAdd;
-    $('add-btn-saved').onclick = openAdd;
     $('parent-add').onclick = openAdd;
     $('install-row').onclick = function () {
       App.caps.promptInstall().then(function (accepted) {
@@ -1200,6 +1346,7 @@ window.App = window.App || {};
 
     wireHold();
     wireScrubber();
+    wirePicksDrag();
   }
 
   function openAdd() {
