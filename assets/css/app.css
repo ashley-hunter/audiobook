@@ -271,7 +271,6 @@ h1, h2, p { margin: 0; }
 /* Safari drops a scroller's end padding, so the last gap is a flex item. */
 .picks::after { content: ''; flex: none; width: calc(var(--pad-x) - 7px); }
 .pick {
-  position: relative;
   flex: none;
   width: 136px;
   padding: 0 7px;
@@ -283,28 +282,6 @@ h1, h2, p { margin: 0; }
 .pick.is-dragging { position: relative; z-index: 2; opacity: .85; }
 .pick.is-dragging .pick-cover { box-shadow: 0 14px 34px rgba(0, 0, 0, .5); }
 .pick-btn { display: block; width: 100%; text-align: left; }
-/* The visible dot is small; the button around it is a full 44px target. */
-.pick-remove {
-  position: absolute;
-  top: -1px; right: -2px;
-  width: 44px; height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0;
-}
-.pick-remove::before {
-  content: '\00d7';
-  width: 26px; height: 26px;
-  border-radius: 13px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(3, 4, 14, .62);
-  color: var(--cream);
-  font-size: 19px;
-  line-height: 1;
-}
 .picks-empty { font-size: 14px; line-height: 1.5; color: var(--cream-50); }
 .pick-frame { display: block; position: relative; }
 .pick-cover { height: 136px; border-radius: 20px; width: 100%; }
@@ -381,6 +358,45 @@ h1, h2, p { margin: 0; }
 .empty { margin-top: 40px; text-align: center; color: var(--cream-55); line-height: 1.6; }
 .empty-title { margin-bottom: 8px; color: var(--cream); }
 .empty strong { color: var(--gold); }
+
+/* ---------- mini player ---------- */
+.mini {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: calc(12px + var(--safe-bottom));
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  height: 64px;
+  padding: 0 6px 0 8px;
+  box-sizing: border-box;
+  border-radius: 20px;
+  background: rgba(20, 22, 52, .82);
+  border: 1px solid var(--hairline);
+  -webkit-backdrop-filter: blur(22px);
+  backdrop-filter: blur(22px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .35);
+}
+.mini[hidden] { display: none; }
+.mini-open { display: flex; align-items: center; flex: 1; min-width: 0; height: 100%; text-align: left; }
+.mini-cover { width: 46px; height: 46px; border-radius: 10px; flex: none; }
+.mini-title {
+  flex: 1;
+  min-width: 0;
+  margin-left: 12px;
+  font-weight: 600;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mini-play { width: 48px; height: 48px; flex: none; display: flex; align-items: center; justify-content: center; }
+.mini-play svg { width: 26px; height: 26px; fill: var(--cream); }
+.mini-play .icon-pause { display: none; }
+.mini-play.is-playing .icon-play { display: none; }
+.mini-play.is-playing .icon-pause { display: block; }
+.library.has-mini .screen { padding-bottom: calc(var(--safe-bottom) + 100px); }
 
 /* ---------- player ---------- */
 .player {

@@ -362,6 +362,7 @@ window.App = window.App || {};
     renderHome();
     renderPlayer();
     renderParent();
+    renderMini();
   }
 
   function renderHome() {
@@ -453,15 +454,7 @@ window.App = window.App || {};
       button.appendChild(ui.el('span', 'pick-title', story.title));
       button.appendChild(ui.el('span', 'pick-mins', ui.minutes(story.len)));
       button.onclick = function () { openStory(story.id); };
-
-      // A sibling of the pick's button, since a button cannot hold another.
-      var remove = ui.el('button', 'pick-remove', '\u00d7');
-      remove.type = 'button';
-      remove.setAttribute('aria-label', 'Take ' + story.title + ' out of tonight\u2019s picks');
-      remove.onclick = function () { unqueue(story.id); };
-
       wrap.appendChild(button);
-      wrap.appendChild(remove);
       host.appendChild(wrap);
     });
   }
@@ -733,6 +726,7 @@ window.App = window.App || {};
       },
       state: function (isPlaying) {
         ui.text($('play-label'), isPlaying ? 'Pause' : 'Play');
+        renderMini();
         if (isPlaying) ui.toggleClass($('asleep'), 'is-on', false);
       },
       sleep: function (secondsLeft) {
@@ -754,6 +748,7 @@ window.App = window.App || {};
       loaded: function (story) {
         currentId = story.id;
         renderPlayer();
+        renderMini();
       },
       error: function (message) {
         ui.toast(message);
@@ -781,8 +776,38 @@ window.App = window.App || {};
     renderPlayer();
   }
 
-  function openPlayer() { ui.toggleClass($('player'), 'is-open', true); $('player').setAttribute('aria-hidden', 'false'); }
-  function closePlayer() { ui.toggleClass($('player'), 'is-open', false); $('player').setAttribute('aria-hidden', 'true'); renderHome(); }
+  function openPlayer() {
+    ui.toggleClass($('player'), 'is-open', true);
+    $('player').setAttribute('aria-hidden', 'false');
+    renderMini();
+  }
+
+  function closePlayer() {
+    ui.toggleClass($('player'), 'is-open', false);
+    $('player').setAttribute('aria-hidden', 'true');
+    renderHome();
+    renderMini();
+  }
+
+  /* The mini player, as in Apple Music: whenever a story is loaded and the full
+   * player is put away, a bar along the bottom keeps it in reach.
+   */
+  function renderMini() {
+    var loaded = App.player.currentStory();
+    var story = loaded ? byId(loaded.id) : null;
+    var show = !!story && $('player').className.indexOf('is-open') < 0;
+    ui.show($('mini'), show);
+    ui.toggleClass($('library'), 'has-mini', show);
+    if (!story) return;
+    ui.text($('mini-title'), story.title);
+    if ($('mini-cover').getAttribute('data-id') !== story.id) {
+      $('mini-cover').setAttribute('data-id', story.id);
+      ui.paintCover($('mini-cover'), story);
+    }
+    var playing = App.player.playing();
+    ui.toggleClass($('mini-play'), 'is-playing', playing);
+    $('mini-play').setAttribute('aria-label', playing ? 'Pause' : 'Play');
+  }
   /* Swipe the player down to put it away, the way Apple Music's does: it
    * follows the finger, and a long enough or quick enough pull dismisses it.
    * The scrubber and the timer sheet keep their own drags.
@@ -940,32 +965,35 @@ window.App = window.App || {};
 
     var node = $('menu');
     var host = $('menu-actions');
-    function close() {
-      ui.toggleClass(node, 'is-on', false);
-      node.setAttribute('aria-hidden', 'true');
-    }
     ui.text($('menu-title'), story.title);
     ui.clear(host);
     items.forEach(function (item) {
       var button = ui.el('button', 'confirm-btn', item.label);
       button.type = 'button';
       button.onclick = function () {
-        close();
+        closeStoryMenu();
         if (item.run) item.run();
       };
       host.appendChild(button);
     });
-    $('menu-scrim').onclick = close;
+    $('menu-scrim').onclick = closeStoryMenu;
     ui.toggleClass(node, 'is-on', true);
     node.setAttribute('aria-hidden', 'false');
   }
 
-  /* Press and hold a pick, then drag it along the strip. The other picks make
-   * way as it passes them, and the strip scrolls when it is held near an edge.
-   * Touch events rather than HTML drag and drop or pointer events, neither of
-   * which an iPhone on iOS 12 has. Mouse is wired too, for desktop and tests.
+  function closeStoryMenu() {
+    ui.toggleClass($('menu'), 'is-on', false);
+    $('menu').setAttribute('aria-hidden', 'true');
+  }
+
+  /* Press and hold a pick and its menu opens, as on the iOS Home Screen. Keep
+   * holding and move, and the menu gives way to a drag along the strip: the
+   * other picks make way as it passes them, and the strip scrolls when it is
+   * held near an edge. Touch events rather than HTML drag and drop or pointer
+   * events, neither of which an iPhone on iOS 12 has. Mouse is wired too, for
+   * desktop and tests.
    */
-  var DRAG_HOLD_MS = 300;
+  var DRAG_HOLD_MS = 450;
   var DRAG_EDGE = 44;        // px from the strip's edge that starts it scrolling
 
   function wirePicksDrag() {
@@ -983,25 +1011,33 @@ window.App = window.App || {};
       while (node && node.parentNode !== host) node = node.parentNode;
       if (!node) return;
       var p = point(event);
-      drag = { node: node, start: p, last: p, on: false, from: indexIn(node), shift: 0 };
+      var story = lineup()[indexIn(node)];
+      drag = { node: node, start: p, last: p, held: false, on: false, from: indexIn(node), shift: 0 };
       drag.timer = setTimeout(function () {
-        drag.on = true;
+        drag.held = true;
         drag.grab = p.x - node.getBoundingClientRect().left;   // finger's place on the cover
-        drag.scroller = setInterval(edgeScroll, 16);
-        ui.toggleClass(node, 'is-dragging', true);
+        if (story) openStoryMenu(story);
       }, DRAG_HOLD_MS);
     }
 
     function move(event) {
       if (!drag) return;
       var p = point(event);
-      if (!drag.on) {
-        var dx = p.x - drag.start.x;
-        var dy = p.y - drag.start.y;
-        if (dx * dx + dy * dy > 100) stop();   // moved before the hold: a scroll
+      var dx = p.x - drag.start.x;
+      var dy = p.y - drag.start.y;
+      var moved = dx * dx + dy * dy > 100;
+      if (!drag.held) {
+        if (moved) stop();   // moved before the hold: a scroll
         return;
       }
       event.preventDefault();
+      if (!drag.on) {
+        if (!moved) return;
+        drag.on = true;
+        closeStoryMenu();
+        drag.scroller = setInterval(edgeScroll, 16);
+        ui.toggleClass(drag.node, 'is-dragging', true);
+      }
       drag.last = p;
       follow();
     }
@@ -1032,16 +1068,19 @@ window.App = window.App || {};
       if (host.scrollLeft !== before) follow();
     }
 
-    function stop() {
+    function stop(event) {
       if (!drag) return;
       var done = drag;
       drag = null;
       clearTimeout(done.timer);
       clearInterval(done.scroller);
+      // Lifting a finger after a hold would otherwise click whatever is now
+      // under it, which is the menu's scrim, and close the menu straight away.
+      if (done.held && event && event.type === 'touchend') event.preventDefault();
+      if (done.held) suppressClickUntil = Date.now() + 500;
       if (!done.on) return;
       done.node.style.transform = '';
       ui.toggleClass(done.node, 'is-dragging', false);
-      suppressClickUntil = Date.now() + 500;
       // -1 if the strip was rebuilt mid-drag, in which case there is nothing to move.
       var to = indexIn(done.node);
       if (to >= 0) movePick(done.from, to);
@@ -1348,6 +1387,8 @@ window.App = window.App || {};
 
   function wireControls() {
     $('player-close').onclick = closePlayer;
+    $('mini-open').onclick = openPlayer;
+    $('mini-play').onclick = function () { App.player.toggle(); };
     $('to-library').onclick = function () { scrollTop(); closePlayer(); };
     $('playbtn').onclick = function () {
       if (!App.player.currentStory()) {

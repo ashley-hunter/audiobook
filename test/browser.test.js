@@ -395,6 +395,21 @@ function writeWav(file, seconds) {
   }, distance);
   check('a short swipe down springs the player back', await swipeDown(60));
   check('a long swipe down dismisses the player', !(await swipeDown(300)));
+
+  check('a mini player keeps the story in reach', await page.locator('#mini').isVisible());
+  const miniPlaying = await page.evaluate(() => App.player.playing());
+  await page.locator('#mini-play').click();
+  await page.waitForTimeout(300);
+  check('its button plays and pauses',
+    (await page.evaluate(() => App.player.playing())) === !miniPlaying);
+  await page.locator('#mini-play').click();
+  await page.waitForTimeout(300);
+  await page.locator('#mini-open').click();
+  await page.waitForTimeout(600);
+  check('tapping it brings the player back',
+    (await page.locator('#player').getAttribute('class')).includes('is-open') &&
+    !(await page.locator('#mini').isVisible()));
+  await page.locator('#player-close').click();
   await page.waitForTimeout(500);
   check('there is no tab bar any more', (await page.locator('#tabbar').count()) === 0);
 
@@ -475,10 +490,12 @@ function writeWav(file, seconds) {
   const secondPick = await page.locator('#picks .pick').nth(1).boundingBox();
   await page.mouse.move(secondPick.x + secondPick.width / 2, secondPick.y + secondPick.height / 2);
   await page.mouse.down();
-  await page.waitForTimeout(450);
+  await page.waitForTimeout(650);
   await page.mouse.move(firstPick.x + 10, firstPick.y + firstPick.height / 2, { steps: 8 });
   await page.mouse.up();
   await page.waitForTimeout(300);
+  check('moving while held swaps the menu for a drag',
+    !(await page.locator('#menu').getAttribute('class')).includes('is-on'));
   check('dragging a pick reorders the queue',
     same(await lineupTitles(), ['Moon Boat', 'Sleepy Foxes']), JSON.stringify(await lineupTitles()));
   check('and dropping it does not open the story',
@@ -488,9 +505,18 @@ function writeWav(file, seconds) {
   check('"Play sooner" moves a pick up without dragging',
     same(await lineupTitles(), ['Sleepy Foxes', 'Moon Boat']), JSON.stringify(await lineupTitles()));
 
-  await page.locator('#picks .pick').filter({ hasText: 'Moon Boat' }).locator('.pick-remove').click();
+  const moonPick = await page.locator('#picks .pick').filter({ hasText: 'Moon Boat' }).boundingBox();
+  await page.mouse.move(moonPick.x + moonPick.width / 2, moonPick.y + 40);
+  await page.mouse.down();
+  await page.waitForTimeout(650);
+  await page.mouse.up();
+  await page.waitForTimeout(300);
+  check('holding a pick opens its menu',
+    (await page.locator('#menu').getAttribute('class')).includes('is-on') &&
+    (await page.locator('#menu-title').textContent()) === 'Moon Boat');
+  await page.locator('#menu-actions .confirm-btn', { hasText: 'Take out' }).click();
   await page.waitForTimeout(250);
-  check('the x on a pick takes it out of the queue',
+  check('and takes it out of the queue from there',
     same(await lineupTitles(), ['Sleepy Foxes']), JSON.stringify(await lineupTitles()));
   await fromMenu('Moon Boat', 'Add to tonight');
 
