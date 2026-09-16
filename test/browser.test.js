@@ -374,7 +374,27 @@ function writeWav(file, seconds) {
 
   /* ------------------------------------------------------------ persistence */
   await page.locator('#player-fav').click();
-  await page.locator('#player-close').click();
+
+  // Swipe down on the player, the Apple Music way: a short pull springs back,
+  // a long one puts the player away.
+  const swipeDown = (distance) => page.evaluate(async (distance) => {
+    const target = document.getElementById('player-title');
+    const at = (y) => new Touch({ identifier: 1, target, clientX: 180, clientY: y });
+    const fire = (type, y) => target.dispatchEvent(new TouchEvent(type, {
+      touches: type === 'touchend' ? [] : [at(y)], changedTouches: [at(y)], bubbles: true, cancelable: true,
+    }));
+    fire('touchstart', 200);
+    for (let i = 1; i <= 10; i++) {
+      fire('touchmove', 200 + (distance * i) / 10);
+      await new Promise((r) => setTimeout(r, 30));
+    }
+    await new Promise((r) => setTimeout(r, 150));   // a held finger, not a flick
+    fire('touchend', 200 + distance);
+    await new Promise((r) => setTimeout(r, 600));
+    return document.getElementById('player').className.indexOf('is-open') >= 0;
+  }, distance);
+  check('a short swipe down springs the player back', await swipeDown(60));
+  check('a long swipe down dismisses the player', !(await swipeDown(300)));
   await page.waitForTimeout(500);
   check('there is no tab bar any more', (await page.locator('#tabbar').count()) === 0);
 
@@ -467,6 +487,12 @@ function writeWav(file, seconds) {
   await fromMenu('Sleepy Foxes', 'Play sooner');
   check('"Play sooner" moves a pick up without dragging',
     same(await lineupTitles(), ['Sleepy Foxes', 'Moon Boat']), JSON.stringify(await lineupTitles()));
+
+  await page.locator('#picks .pick').filter({ hasText: 'Moon Boat' }).locator('.pick-remove').click();
+  await page.waitForTimeout(250);
+  check('the x on a pick takes it out of the queue',
+    same(await lineupTitles(), ['Sleepy Foxes']), JSON.stringify(await lineupTitles()));
+  await fromMenu('Moon Boat', 'Add to tonight');
 
   await page.reload({ waitUntil: 'networkidle' });
   await page.waitForTimeout(1200);

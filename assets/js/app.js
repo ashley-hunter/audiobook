@@ -442,7 +442,7 @@ window.App = window.App || {};
     ui.clear(host);
     picks.forEach(function (story, index) {
       var wrap = ui.el('div', 'pick');
-      var button = ui.el('button', null);
+      var button = ui.el('button', 'pick-btn');
       button.type = 'button';
       var frame = ui.el('span', 'pick-frame');
       var cover = ui.el('span', 'cover pick-cover');
@@ -452,9 +452,16 @@ window.App = window.App || {};
       button.appendChild(frame);
       button.appendChild(ui.el('span', 'pick-title', story.title));
       button.appendChild(ui.el('span', 'pick-mins', ui.minutes(story.len)));
-      button.className = 'pick-btn';
       button.onclick = function () { openStory(story.id); };
+
+      // A sibling of the pick's button, since a button cannot hold another.
+      var remove = ui.el('button', 'pick-remove', '\u00d7');
+      remove.type = 'button';
+      remove.setAttribute('aria-label', 'Take ' + story.title + ' out of tonight\u2019s picks');
+      remove.onclick = function () { unqueue(story.id); };
+
       wrap.appendChild(button);
+      wrap.appendChild(remove);
       host.appendChild(wrap);
     });
   }
@@ -776,6 +783,70 @@ window.App = window.App || {};
 
   function openPlayer() { ui.toggleClass($('player'), 'is-open', true); $('player').setAttribute('aria-hidden', 'false'); }
   function closePlayer() { ui.toggleClass($('player'), 'is-open', false); $('player').setAttribute('aria-hidden', 'true'); renderHome(); }
+  /* Swipe the player down to put it away, the way Apple Music's does: it
+   * follows the finger, and a long enough or quick enough pull dismisses it.
+   * The scrubber and the timer sheet keep their own drags.
+   */
+  var SWIPE_CLOSE_FRACTION = 0.25;   // of the screen height
+  var SWIPE_CLOSE_SPEED = 0.5;       // px per ms at the moment of release
+
+  function wirePlayerSwipe() {
+    var player = $('player');
+    var swipe = null;
+
+    function start(event) {
+      if (event.touches.length !== 1 || !swipeable(event.target)) return;
+      var touch = event.touches[0];
+      swipe = { x: touch.clientX, y: touch.clientY, dy: 0, on: false,
+                lastY: touch.clientY, lastAt: Date.now(), speed: 0 };
+    }
+
+    function move(event) {
+      if (!swipe) return;
+      var touch = event.touches[0];
+      var dx = touch.clientX - swipe.x;
+      var dy = touch.clientY - swipe.y;
+      if (!swipe.on) {
+        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+        if (dy <= 0 || Math.abs(dx) > dy) { swipe = null; return; }   // sideways or up
+        swipe.on = true;
+        player.style.transition = 'none';
+      }
+      event.preventDefault();
+      var now = Date.now();
+      swipe.speed = (touch.clientY - swipe.lastY) / Math.max(1, now - swipe.lastAt);
+      swipe.lastY = touch.clientY;
+      swipe.lastAt = now;
+      swipe.dy = Math.max(0, dy);
+      player.style.transform = 'translateY(' + swipe.dy + 'px)';
+    }
+
+    function end() {
+      if (!swipe) return;
+      var done = swipe;
+      swipe = null;
+      if (!done.on) return;
+      var flicked = Date.now() - done.lastAt < 100 && done.speed > SWIPE_CLOSE_SPEED;
+      // Handing back to the stylesheet animates from wherever the finger left it.
+      player.style.transition = '';
+      player.style.transform = '';
+      if (flicked || done.dy > player.offsetHeight * SWIPE_CLOSE_FRACTION) closePlayer();
+    }
+
+    function swipeable(node) {
+      if ($('sheet').className.indexOf('is-open') >= 0) return false;
+      for (; node && node !== player; node = node.parentNode) {
+        if (node.id === 'scrub' || node.id === 'asleep') return false;
+      }
+      return true;
+    }
+
+    player.addEventListener('touchstart', start, false);
+    player.addEventListener('touchmove', move, { passive: false });
+    player.addEventListener('touchend', end, false);
+    player.addEventListener('touchcancel', end, false);
+  }
+
   function openSheet() { ui.toggleClass($('sheet'), 'is-open', true); ui.toggleClass($('sheet-scrim'), 'is-on', true); }
   function closeSheet() { ui.toggleClass($('sheet'), 'is-open', false); ui.toggleClass($('sheet-scrim'), 'is-on', false); }
 
@@ -1347,6 +1418,7 @@ window.App = window.App || {};
     wireHold();
     wireScrubber();
     wirePicksDrag();
+    wirePlayerSwipe();
   }
 
   function openAdd() {
