@@ -923,6 +923,21 @@ function writeWav(file, seconds) {
   check('a deploy does not reload the page out from under an open sheet',
     yanked.openBefore && yanked.survived && yanked.stillOpen, JSON.stringify(yanked));
 
+  /* The update that just waited is taken the moment the app is put away: a
+   * reload nobody can see beats one more launch on the old release. */
+  const onHide = await page.evaluate(async () => {
+    const real = Object.getOwnPropertyDescriptor(Document.prototype, 'hidden');
+    Object.defineProperty(document, 'hidden', { configurable: true, get: function () { return true; } });
+    try {
+      document.dispatchEvent(new Event('visibilitychange'));
+      await new Promise((r) => setTimeout(r, 1200));
+      return { survived: !!window.__survived };
+    } finally {
+      Object.defineProperty(document, 'hidden', real || { configurable: true, get: function () { return false; } });
+    }
+  }).catch(() => ({ survived: false }));
+  check('and takes it as soon as the app is put away', !onHide.survived, JSON.stringify(onHide));
+
   // But an app nobody has touched yet still takes the update straight away,
   // or a deploy would never reach the phone until something else forced it.
   await page.locator('#add-close').click();

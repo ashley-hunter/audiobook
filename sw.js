@@ -94,15 +94,17 @@ self.addEventListener('fetch', function (event) {
 
   event.respondWith(
     caches.match(request).then(function (hit) {
-      if (hit) {
-        // Refresh in the background; the cached copy is what gets returned.
-        fetch(request).then(function (response) {
-          if (response && response.ok) {
-            caches.open(VERSION).then(function (cache) { cache.put(request, response.clone()); });
-          }
-        })['catch'](function () { return null; });
-        return hit;
-      }
+      /* A hit is served as it is, and nothing refreshes it in place.
+       *
+       * This used to fetch each file again in the background and write the
+       * answer into this release's cache. On a phone that had not restarted
+       * since a deploy, that quietly mixed two releases in one cache - a new
+       * script beside the old HTML that was written for it - which shows up as
+       * an app that is half updated and impossible to reason about. A release
+       * now only changes when a new worker installs a whole new cache and
+       * activate throws the old one away.
+       */
+      if (hit) return hit;
       // A miss that succeeds from the network is worth keeping, so a shell
       // file that somehow escaped the install is repaired rather than fetched
       // every time and missing the next time there is no signal.

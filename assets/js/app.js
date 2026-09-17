@@ -106,11 +106,28 @@ window.App = window.App || {};
     var hadController = !!navigator.serviceWorker.controller;
     navigator.serviceWorker.addEventListener('controllerchange', function () {
       if (!hadController) return;          // first run has nothing to replace
-      if (!safeToReload()) return;
-      if (alreadyReloaded()) return;       // see below: this must survive a reload
-      markReloaded();
-      window.location.reload();
+      updateWaiting = true;
+      takeUpdate();
     });
+
+    /* An update that arrives mid-use waits rather than reloading under a
+     * finger. Leaving the app is the moment it can be taken without costing
+     * anything: the reload happens on a screen nobody is looking at, and the
+     * next launch is the new release rather than the one after that.
+     */
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) takeUpdate();
+    }, false);
+  }
+
+  var updateWaiting = false;
+
+  function takeUpdate() {
+    if (!updateWaiting) return;
+    if (!safeToReload()) return;
+    if (alreadyReloaded()) return;       // see below: this must survive a reload
+    markReloaded();
+    window.location.reload();
   }
 
   /* Reasons to leave a running app alone. An update is never worth interrupting
@@ -130,6 +147,11 @@ window.App = window.App || {};
     if (App.player.currentStory()) return false;   // not just "not playing": a
                                                    // paused story is still
                                                    // someone's place in it
+    /* Out of sight, so there is no finger to pull the page out from under and
+     * nothing on screen to lose - the one case where an earlier tap does not
+     * rule a reload out.
+     */
+    if (document.hidden) return true;
     if (interacted) return false;
     return !anythingOpen();
   }

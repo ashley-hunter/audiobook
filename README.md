@@ -127,9 +127,16 @@ phone if the browser installs a new worker. `build-site.js` stamps `sw.js` with
 a hash of everything that ships, which means the worker bytes change whenever
 the app does and stay identical when it does not. The new worker claims the page
 on activate, and the page reloads once to pick up the new HTML and scripts -
-unless a story is playing, in which case the update waits for the next launch.
-Without the stamp the worker never changes, `activate` never runs, and the old
-release keeps being served.
+unless a story is playing or someone is part way through something, in which
+case it waits and is taken the moment the app is put away. Without the stamp
+the worker never changes, `activate` never runs, and the old release keeps
+being served.
+
+A cached file is served as it is and never refreshed in place. Fetching each
+file again in the background sounds harmless and is not: on a phone that had
+not restarted since a deploy it wrote new files into the running release's
+cache, so a launch could mix a new script with the old HTML written for it. A
+release now changes only when a new worker installs a whole new cache.
 
 ---
 
@@ -193,7 +200,8 @@ into playback resets the gain to one so a story always starts at full volume.
 as it activates, and the app reloads to pick up the new release. That reload is
 only ever an optimisation - the next launch gets the new files either way - so
 it is skipped entirely once the app has been touched, or while anything is open,
-playing or importing. It used to fire seconds after boot, which is exactly when
+playing or importing - and then taken when the app is backgrounded, where there
+is no finger to pull the page out from under and nothing on screen to lose. It used to fire seconds after boot, which is exactly when
 someone is reaching for Add: the sheet vanished and, on iOS, took the file
 picker with it, so tapping the dropzone appeared to do nothing.
 
