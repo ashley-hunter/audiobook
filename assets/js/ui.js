@@ -119,7 +119,10 @@ App.ui = (function () {
   // Sets an SVG progress ring from a 0..1 fraction.
   function ring(node, fraction) {
     if (!node) return;
-    var circumference = parseFloat(node.getAttribute('r')) * 2 * Math.PI;
+    // The radius never changes; reading and parsing it again on every frame of
+    // a three second hold is pure waste.
+    if (!node.__circumference) node.__circumference = parseFloat(node.getAttribute('r')) * 2 * Math.PI;
+    var circumference = node.__circumference;
     var clamped = Math.max(0, Math.min(1, fraction || 0));
     node.style.strokeDasharray = circumference.toFixed(2);
     node.style.strokeDashoffset = (circumference * (1 - clamped)).toFixed(2);

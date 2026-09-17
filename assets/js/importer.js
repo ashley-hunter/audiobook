@@ -106,7 +106,7 @@ App.importer = (function () {
         if (tags.album) story.album = tags.album;
         if (tags.picture && tags.picture.data && tags.picture.data.byteLength) {
           story.hasArt = true;
-          return App.store.putArt(id, tags.picture.data, tags.picture.type);
+          return App.artwork.store(id, tags.picture.data, tags.picture.type);
         }
         return null;
       })
@@ -154,7 +154,7 @@ App.importer = (function () {
       return Promise.reject(new Error('That is not an image.'));
     }
     return App.caps.readArrayBuffer(file).then(function (buffer) {
-      return App.store.putArt(storyId, buffer, file.type);
+      return App.artwork.store(storyId, buffer, file.type);
     }).then(function () {
       App.media.forgetArt(storyId);
       return App.store.patchStory(storyId, { hasArt: true });

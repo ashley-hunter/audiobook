@@ -709,6 +709,28 @@ function writeWav(file, seconds) {
     !counted.playing && counted.curtain, JSON.stringify(counted));
   check('leaving the queue empty', (await lineupTitles()).length === 0, JSON.stringify(await lineupTitles()));
 
+  /* A cover is drawn at 136px at the very largest. Publishers embed art
+     thousands of pixels square, and storing that whole is both bytes the phone
+     has not got and a full decode every time a row is painted. */
+  const shrunk = await page.evaluate(async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1400;
+    canvas.height = 1400;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#7B61FF';
+    ctx.fillRect(0, 0, 1400, 1400);
+    const blob = await new Promise((r) => canvas.toBlob(r, 'image/png'));
+    const story = App.debug.stories()[0];
+    await App.importer.setArt(story.id, new File([blob], 'cover.png', { type: 'image/png' }));
+    const row = await App.store.getArt(story.id);
+    const url = URL.createObjectURL(new Blob([row.data], { type: row.type }));
+    const image = await new Promise((r) => { const i = new Image(); i.onload = () => r(i); i.src = url; });
+    URL.revokeObjectURL(url);
+    return { w: image.width, h: image.height, bytes: row.data.byteLength, was: blob.size };
+  });
+  check('a big cover is stored at a size the screen can actually use',
+    shrunk.w <= 400 && shrunk.h <= 400 && shrunk.bytes < shrunk.was, JSON.stringify(shrunk));
+
   /* ============================================================================
      Regressions. Each of these was a real bug, and each test was written to
      fail against the code before its fix.

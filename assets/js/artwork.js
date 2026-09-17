@@ -209,8 +209,72 @@ App.artwork = (function () {
     })['catch'](unreachable);
   }
 
+  /* Covers are drawn at 136px at the very largest, and publishers embed art
+   * several thousand pixels square. Storing that is bytes the phone does not
+   * have and, worse, a full decode of a multi-megapixel image every time a
+   * cover is painted. Anything larger than this is redrawn at this size before
+   * it is stored; anything smaller is kept as it is.
+   */
+  var MAX_DIM = 400;
+
+  function shrink(data, type) {
+    return new Promise(function (resolve) {
+      if (!data || !data.byteLength || typeof document === 'undefined') return resolve(null);
+
+      var url = URL.createObjectURL(new Blob([data], { type: type || 'image/jpeg' }));
+      var image = new Image();
+      var settled = false;
+
+      function finish(value) {
+        if (settled) return;
+        settled = true;
+        URL.revokeObjectURL(url);
+        resolve(value);
+      }
+
+      image.onerror = function () { finish(null); };
+      image.onload = function () {
+        var scale = Math.min(1, MAX_DIM / Math.max(image.width, image.height));
+        if (scale >= 1) return finish(null);        // already small enough
+
+        var canvas = document.createElement('canvas');
+        canvas.width = Math.round(image.width * scale);
+        canvas.height = Math.round(image.height * scale);
+        try {
+          canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+        } catch (err) {
+          void err;
+          return finish(null);
+        }
+        if (!canvas.toBlob) return finish(null);
+        canvas.toBlob(function (blob) {
+          if (!blob) return finish(null);
+          App.caps.readArrayBuffer(blob).then(function (buffer) {
+            finish({ data: buffer, type: 'image/jpeg' });
+          })['catch'](function () { finish(null); });
+        }, 'image/jpeg', 0.82);
+      };
+
+      image.src = url;
+      // A picture that never decodes must not hold an import up.
+      setTimeout(function () { finish(null); }, 5000);
+    });
+  }
+
+  // Stores a cover, shrunk where that is worth doing. Failure to shrink is not
+  // failure to store: the original goes in instead.
+  function store(storyId, data, type) {
+    return shrink(data, type)['catch'](function () { return null; })
+      .then(function (smaller) {
+        var use = smaller || { data: data, type: type };
+        return App.store.putArt(storyId, use.data, use.type);
+      });
+  }
+
   return {
     find: find,
+    shrink: shrink,
+    store: store,
     // exercised directly by test/artwork.test.js
     clean: clean,
     match: match,

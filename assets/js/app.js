@@ -338,7 +338,7 @@ window.App = window.App || {};
       }
       story.artTried = true;
       story.hasArt = true;
-      return App.store.putArt(story.id, found.data, found.type)
+      return App.artwork.store(story.id, found.data, found.type)
         .then(function () {
           return App.store.patchStory(story.id, { hasArt: true, artTried: true });
         })
@@ -1073,6 +1073,7 @@ window.App = window.App || {};
       if (!drag.on) {
         if (!moved) return;
         drag.on = true;
+        measure();
         drag.scroller = setInterval(edgeScroll, 16);
         ui.toggleClass(drag.node, 'is-dragging', true);
       }
@@ -1080,17 +1081,40 @@ window.App = window.App || {};
       follow();
     }
 
-    // Keeps the dragged pick under the finger, and moves it past any neighbour
-    // whose middle the finger has crossed.
+  /* Keeps the dragged pick under the finger, and moves it past any neighbour
+   * whose middle the finger has crossed.
+   *
+   * Every measurement here is taken once, when the picks last moved, rather
+   * than on each touchmove: reading a box straight after writing a transform
+   * makes the engine lay the page out again on the spot, which is the last
+   * thing a finger-tracking loop should be doing sixty times a second.
+   */
+    function measure() {
+      drag.width = drag.node.offsetWidth;
+      drag.home = drag.node.getBoundingClientRect().left - drag.shift;
+      drag.scrollAt = host.scrollLeft;
+    }
+
     function follow() {
       var node = drag.node;
       var x = drag.last.x;
+      // The row shifts under the finger when the strip scrolls; the home
+      // position moves with it rather than being measured again.
+      drag.home -= host.scrollLeft - drag.scrollAt;
+      drag.scrollAt = host.scrollLeft;
+
+      var edge = drag.home + drag.shift;      // where the pick is drawn now
       var prev = node.previousElementSibling;
       var next = node.nextElementSibling;
-      if (prev && x < middle(prev)) host.insertBefore(node, prev);
-      else if (next && x > middle(next)) host.insertBefore(node, next.nextElementSibling);
-      var left = node.getBoundingClientRect().left - drag.shift;   // where the row puts it
-      drag.shift = x - drag.grab - left;
+      if (prev && edge < drag.home - drag.width / 2) {
+        host.insertBefore(node, prev);
+        measure();
+      } else if (next && edge > drag.home + drag.width / 2) {
+        host.insertBefore(node, next.nextElementSibling);
+        measure();
+      }
+
+      drag.shift = x - drag.grab - drag.home;
       node.style.transform = 'translateX(' + drag.shift + 'px)';
     }
 
@@ -1135,11 +1159,6 @@ window.App = window.App || {};
     }
 
     function indexIn(node) { return [].indexOf.call(host.children, node); }
-
-    function middle(node) {
-      var box = node.getBoundingClientRect();
-      return box.left + box.width / 2;
-    }
 
     host.addEventListener('touchstart', start, false);
     host.addEventListener('touchmove', move, { passive: false });

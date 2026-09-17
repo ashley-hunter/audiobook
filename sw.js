@@ -211,8 +211,25 @@ function wholeFile(story, mime, total) {
     }
   }
 
-  return readBytes(story, 0, total - 1).then(function (bytes) {
-    return new Response(bytes, { status: 200, headers: headers });
+  /* No stream, so the whole file cannot be answered without holding all of it
+   * in memory at once - which for an audiobook is the very thing this route
+   * exists to avoid, and on a phone with a gigabyte is how the app gets killed.
+   * The first window is answered as a partial instead: a media element that
+   * asked without a Range header still gets something to start on, sees
+   * Accept-Ranges, and asks for the rest a window at a time.
+   */
+  var end = Math.min(MAX_WINDOW - 1, total - 1);
+  return readBytes(story, 0, end).then(function (bytes) {
+    return new Response(bytes, {
+      status: 206,
+      headers: {
+        'Content-Type': mime,
+        'Content-Length': String(bytes.byteLength),
+        'Content-Range': 'bytes 0-' + end + '/' + total,
+        'Accept-Ranges': 'bytes',
+        'Cache-Control': 'no-store'
+      }
+    });
   });
 }
 
