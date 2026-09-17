@@ -146,6 +146,18 @@ App.store = (function () {
     });
   }
 
+  /* Whether a story's audio is still on disk, without reading it. The startup
+   * audit asks this of every story, and getChunk would hand back a megabyte
+   * each time only for it to be thrown away.
+   */
+  function hasChunk(storyId, index) {
+    return tx('chunks', 'readonly', function (store, set) {
+      store.count(chunkKey(storyId, index)).onsuccess = function (event) {
+        set(event.target.result > 0);
+      };
+    });
+  }
+
   // Reads chunks [from, to] inclusive in one transaction.
   function getChunks(storyId, from, to) {
     return tx('chunks', 'readonly', function (store, set) {
@@ -236,6 +248,7 @@ App.store = (function () {
     deleteStory: deleteStory,
     putChunk: putChunk,
     getChunk: getChunk,
+    hasChunk: hasChunk,
     chunkOwners: chunkOwners,
     getChunks: getChunks,
     deleteChunks: deleteChunks,

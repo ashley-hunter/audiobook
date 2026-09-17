@@ -414,6 +414,19 @@ function writeWav(file, seconds) {
     await wait(300);
     return { start, back, forward: App.player.position() };
   });
+  const ticking = await page.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const playing = App.player.ticking();
+    App.player.pause();
+    await wait(300);
+    const paused = App.player.ticking();
+    await App.player.play();
+    await wait(300);
+    return { playing, paused, again: App.player.ticking() };
+  });
+  check('the once-a-second tick only runs while the story plays',
+    ticking.playing && !ticking.paused && ticking.again, JSON.stringify(ticking));
+
   check('the back button jumps 15 seconds back',
     Math.abs(skipped.back - (skipped.start - 15)) < 1.5, JSON.stringify(skipped));
   check('and the forward button 15 seconds on',
@@ -698,6 +711,24 @@ function writeWav(file, seconds) {
     const found = App.debug.stories().filter(function (s) { return s.title === 'Moon Boat'; });
     if (found.length) await App.store.deleteStory(found[0].id);
   });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(1000);
+
+  /* ------------------------------------ audio iOS has cleared out from under
+     us: the startup audit only counts the record rather than reading the
+     megabyte behind it, so this checks it still spots the loss ------------- */
+  const cleared = await page.evaluate(async () => {
+    const story = App.debug.stories()[0];
+    await App.store.deleteChunks(story.id);
+    App.debug.verifyStorage();
+    await new Promise((r) => setTimeout(r, 600));
+    const row = document.querySelector('#library-rows .row');
+    return { missing: !!App.debug.stories()[0].missing, row: row.className, meta: row.querySelector('.row-meta').textContent };
+  });
+  check('a story whose audio was cleared is marked as such',
+    cleared.missing && cleared.row.indexOf('is-missing') >= 0 &&
+    cleared.meta.indexOf('Needs adding again') >= 0, JSON.stringify(cleared));
+
   await page.reload({ waitUntil: 'networkidle' });
   await page.waitForTimeout(1000);
 

@@ -313,9 +313,7 @@ button:active { opacity: .6; }
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(3, 4, 14, .62);
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
+  background: rgba(3, 4, 14, .72);
   color: var(--cream);
   font-size: 13px;
   font-weight: 700;
@@ -392,10 +390,10 @@ button:active { opacity: .6; }
   padding: 0 6px 0 8px;
   box-sizing: border-box;
   border-radius: 20px;
-  background: rgba(20, 22, 52, .82);
+  /* Opaque rather than blurred: a live blur over the scrolling library is one
+     of the most expensive things an A8 can be asked to keep up with. */
+  background: #161A3C;
   border: 1px solid var(--hairline);
-  -webkit-backdrop-filter: blur(22px);
-  backdrop-filter: blur(22px);
   box-shadow: 0 10px 30px rgba(0, 0, 0, .35);
   transition: transform .3s var(--ease), opacity .26s ease;
 }
@@ -463,6 +461,10 @@ button:active { opacity: .6; }
   animation: drift 9s ease-in-out infinite;
 }
 @media (max-height: 700px) { .moon { top: 104px; width: 52px; height: 52px; } }
+/* The sky only moves while it is on screen. Left running behind the closed
+   player, these two kept the compositor awake for nothing. */
+.player:not(.is-open) .stars,
+.player:not(.is-open) .moon { animation: none; }
 @keyframes twinkle { 0%, 100% { opacity: .35 } 50% { opacity: .9 } }
 @keyframes drift { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-10px) } }
 

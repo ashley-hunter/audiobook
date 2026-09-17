@@ -52,6 +52,19 @@ App.player = (function () {
     if (handlers[name]) handlers[name](a, b);
   }
 
+  /* The once-a-second tick only runs while sound is actually coming out.
+   * Left running it would wake the phone every second for a story that is
+   * paused, or for no story at all, which is a real cost on an old battery.
+   */
+  function startTicker() {
+    if (!ticker) ticker = setInterval(tick, 1000);
+  }
+
+  function stopTicker() {
+    clearInterval(ticker);
+    ticker = null;
+  }
+
   function makeAudio() {
     var el = document.createElement('audio');
     el.preload = 'metadata';
@@ -63,14 +76,17 @@ App.player = (function () {
     // The sleep timer follows the element, not our own calls, so an
     // interruption (a phone call, another app taking audio) pauses it too.
     el.addEventListener('play', function () {
+      startTicker();
       resumeSleep();
       App.caps.media.setPlaybackState(true);
       emit('state', true);
     });
     el.addEventListener('pause', function () {
+      stopTicker();
       suspendSleep();
       App.caps.media.setPlaybackState(false);
       emit('state', false);
+      tick();                 // settle the labels on the way out
     });
     el.addEventListener('loadedmetadata', function () { emit('tick', position(), duration()); });
     return el;
@@ -87,7 +103,6 @@ App.player = (function () {
     App.caps.claimPlaybackAudio();
     registerLockScreenControls();
 
-    ticker = setInterval(tick, 1000);
     document.addEventListener('visibilitychange', function () {
       if (!document.hidden) tick();     // catch up after the app was backgrounded
       else checkpoint(true);
@@ -221,6 +236,7 @@ App.player = (function () {
   function unload() {
     if (!story) return;
     pause();
+    stopTicker();
     story = null;
     fading = false;
     restoreGain();
@@ -599,6 +615,7 @@ App.player = (function () {
   }
 
   function onEnded() {
+    stopTicker();
     var carried;
     if (storiesChosen) {
       sleepStories = Math.max(0, sleepStories - 1);
@@ -671,6 +688,7 @@ App.player = (function () {
     sleepByStories: sleepByStories,
     sleepLeft: sleepLeft,
     fadeLevel: function () { return gain ? gain.gain.value : null; },
+    ticking: function () { return !!ticker; },
     isAsleep: function () { return asleep; },
     checkpoint: checkpoint
   };

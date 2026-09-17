@@ -15,6 +15,7 @@ window.App = window.App || {};
 
   var HOLD_MS = 3000;       // how long the moon must be held to reach parent controls
   var SKIP_SECONDS = 15;    // the player's back and forward buttons
+  var UPDATE_CHECK_MS = 15 * 60 * 1000;   // how often a foregrounded app looks for a new release
 
   var stories = [];
   var mood = 'All';
@@ -82,7 +83,11 @@ window.App = window.App || {};
     // Its rejection has to be returned, or an offline launch - the normal case
     // for this app - raises an unhandled rejection on every boot.
     var registered = navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' });
+    var lastCheck = 0;
     function checkForUpdate() {
+      // Every trip to the foreground would otherwise be a network request.
+      if (Date.now() - lastCheck < UPDATE_CHECK_MS) return;
+      lastCheck = Date.now();
       registered.then(function (reg) {
         return reg && reg.update ? reg.update() : null;
       })['catch'](function () { return null; });
@@ -274,8 +279,8 @@ window.App = window.App || {};
     function step() {
       if (!pending.length) return;
       var story = pending.shift();
-      App.store.getChunk(story.id, 0).then(function (chunk) {
-        var missing = !chunk;
+      App.store.hasChunk(story.id, 0).then(function (present) {
+        var missing = !present;
         if (missing !== !!story.missing) {
           story.missing = missing;
           renderAll();
@@ -556,20 +561,22 @@ window.App = window.App || {};
   function updateProgress(position, length) {
     var story = current();
     var total = length || (story ? story.len : 0) || 0;
-
-    // While a finger is on the slider the thumb belongs to the finger, not to
-    // the once-a-second tick, or it would fight the drag.
-    if (!scrubbing) {
-      paintScrubber(position, total);
-      ui.text($('elapsed'), ui.clock(position));
-      ui.text($('remaining'), '-' + ui.clock(Math.max(0, total - position)));
-    }
-
     var fraction = total ? Math.min(1, position / total) : 0;
-    ui.ring($('disc-fill'), fraction);
 
-    var dim = App.settings.get().dim && App.player.playing() ? Math.min(0.5, fraction * 0.8) : 0;
-    $('sky-dim').style.opacity = String(dim);
+    // Nothing behind the closed player is worth repainting every second.
+    if ($('player').className.indexOf('is-open') >= 0) {
+      // While a finger is on the slider the thumb belongs to the finger, not to
+      // the once-a-second tick, or it would fight the drag.
+      if (!scrubbing) {
+        paintScrubber(position, total);
+        ui.text($('elapsed'), ui.clock(position));
+        ui.text($('remaining'), '-' + ui.clock(Math.max(0, total - position)));
+      }
+      ui.ring($('disc-fill'), fraction);
+
+      var dim = App.settings.get().dim && App.player.playing() ? Math.min(0.5, fraction * 0.8) : 0;
+      $('sky-dim').style.opacity = String(dim);
+    }
 
     if (story && $('keepgoing') && !$('keepgoing').hidden) {
       var keep = keepGoingStory();
@@ -1575,6 +1582,7 @@ window.App = window.App || {};
     lineup: lineup,
     togglePick: togglePick,
     reclaimOrphanChunks: reclaimOrphanChunks,
+    verifyStorage: verifyStorage,
     findArtwork: findArtwork
   };
 })();
