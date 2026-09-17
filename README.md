@@ -16,7 +16,7 @@ show which of them the phone in your hand actually has.
 ```
 npm install                 # playwright, for the browser tests only
 npm run serve               # http://127.0.0.1:8777
-npm test                    # compatibility check, unit tests, browser tests
+npm test                    # compatibility check, unit tests, browser tests, WebKit
 ```
 
 There is no build step. The files you edit are the files that ship. The one
@@ -25,11 +25,21 @@ dependency that reaches the phone is Preact (with `htm`), vendored in
 library list and the queue; everything else on the screen is still built by
 hand.
 
-    npm run parity              # proves a change did not alter the home screen
+    npm run parity              # proves a change did not alter the screen
+    npm run test:safari         # runs the built site in a real WebKit
 
-`npm run parity` renders the two lists against a previous commit and against
-the working tree, then compares the markup and the screenshots of four states.
-It is what proved the move to Preact changed nothing a child would see.
+`npm run parity` renders every list against a previous commit and against the
+working tree, then compares the markup and the screenshots of eight states. It
+is what proved the move to Preact changed nothing a child would see.
+
+**Is Babel needed for the floor?** No, and this is checked rather than assumed.
+Safari 12 is an ES2018 engine - it has classes, arrow functions, template
+literals, spread and async/await, and it has not got optional chaining or
+anything later. Nothing that ships, Preact and htm included, uses syntax newer
+than Safari 10. `npm run check` parses every shipped file at ES2018 and fails
+on anything newer, so a dependency cannot bring modern syntax in behind the
+denylist of specific features it also carries. The ES5 style in this repo's own
+files - `var`, no arrows - is house style, not a requirement.
 
 ---
 

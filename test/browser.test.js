@@ -1021,6 +1021,14 @@ function writeWav(file, seconds) {
     !caps.storageEstimate && !caps.idleCallback && caps.serviceWorker,
     JSON.stringify(caps));
 
+  /* Preact and htm are the only dependency that reaches the phone, and an
+     iPhone 6 is the machine they have to run on. If either one needed
+     something this pass has taken away, nothing below would be drawn at all. */
+  check('the renderer runs with the modern APIs gone',
+    await old.evaluate(() => !!(window.preact && window.htm && window.App.views)));
+  check('and draws the empty library',
+    (await old.locator('#library-empty .empty-add').count()) === 1);
+
   const oldMoon = await old.locator('#moon-btn').boundingBox();
   await old.mouse.move(oldMoon.x + oldMoon.width / 2, oldMoon.y + oldMoon.height / 2);
   await old.mouse.down();
@@ -1045,6 +1053,31 @@ function writeWav(file, seconds) {
   await old.waitForTimeout(2500);
   const oldState = await old.evaluate(() => ({ playing: App.player.playing(), t: App.player.position() }));
   check('playback works with no Media Session', oldState.playing && oldState.t > 0, JSON.stringify(oldState));
+
+  const oldDrawn = await old.evaluate(() => ({
+    heart: (document.querySelector('#library-rows .row-heart') || {}).textContent,
+    more: (document.querySelector('#library-rows .row-more') || {}).textContent,
+    rows: document.querySelectorAll('#library-rows .row').length,
+    chips: document.querySelectorAll('#timer-options .timer-opt').length,
+    custom: !!document.querySelector('#timer-options .timer-custom input'),
+  }));
+  check('every drawn list is there on the old device',
+    oldDrawn.rows === 1 && oldDrawn.heart === '\u2665' && oldDrawn.more === '\u22ef' &&
+    oldDrawn.chips >= 4 && oldDrawn.custom, JSON.stringify(oldDrawn));
+
+  await old.evaluate(() => document.querySelector('#library-rows .row-more').click());
+  await old.waitForTimeout(400);
+  const oldMenu = await old.evaluate(() => ({
+    open: document.getElementById('menu').className.indexOf('is-on') >= 0,
+    items: document.querySelectorAll('#menu-actions .confirm-btn').length,
+  }));
+  check('and a story menu opens there too',
+    oldMenu.open && oldMenu.items >= 2, JSON.stringify(oldMenu));
+  await old.evaluate(() => {
+    const buttons = [].slice.call(document.querySelectorAll('#menu-actions .confirm-btn'));
+    buttons[buttons.length - 1].click();
+  });
+  await old.waitForTimeout(300);
 
   await old.locator('#player-close').click();
   await old.waitForTimeout(400);

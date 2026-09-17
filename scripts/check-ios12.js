@@ -37,7 +37,11 @@ const INLINE_ALLOW = '// caps-ok';
 
 /* Parse errors on Safari 12. Never allowed, anywhere. */
 const SYNTAX_RULES = [
-  [/(^|[^?\w.])\?\.(?![\d])/, 'optional chaining `?.` (Safari 13.1)'],
+  /* `?.` anywhere, unless it is a ternary reaching for a number - `x ? .5 : 1`
+   * is legal and old. The rule used to demand a non-word character in front of
+   * the `?`, which meant it caught `)?.foo` and sailed straight past the form
+   * everybody actually writes, `thing?.foo`. */
+  [/\?\.(?!\d)/, 'optional chaining `?.` (Safari 13.1)'],
   [/\?\?[^=]|\?\?$/, 'nullish coalescing `??` (Safari 13.1)'],
   [/\|\|=|&&=|\?\?=/, 'logical assignment operators (Safari 14)'],
   [/^\s*(static\s+)?#[A-Za-z_]/m, 'private class fields (Safari 14.1)'],
@@ -151,6 +155,31 @@ for (const file of collect()) {
         if (pattern.test(line)) fail(rel, i + 1, label, rawLines[i]);
       }
     });
+  }
+}
+
+/* The regexes above catch what we know to look for. This catches the rest: the
+ * file is parsed at the newest language level Safari 12 understands, and
+ * anything newer is a parse error here rather than a blank screen on the
+ * phone. ES2018 is the level - Safari 12 has async iteration and object spread
+ * and has not got optional chaining, nullish coalescing or anything after.
+ * A dependency that ships modern syntax cannot slip in behind a denylist.
+ */
+const acorn = require('acorn');
+
+for (const file of collect()) {
+  if (!file.endsWith('.js')) continue;
+  const rel = path.relative(ROOT, file);
+  const source = fs.readFileSync(file, 'utf8');
+  for (const sourceType of ['script', 'module']) {
+    try {
+      acorn.parse(source, { ecmaVersion: 2018, sourceType: sourceType, allowHashBang: true });
+      break;      // parsed one way or the other, so Safari 12 can read it
+    } catch (err) {
+      if (sourceType === 'module') {
+        failures.push(`${rel}:${err.loc ? err.loc.line : '?'}  will not parse as ES2018, which is all Safari 12 has: ${err.message}`);
+      }
+    }
   }
 }
 
