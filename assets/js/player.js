@@ -165,6 +165,11 @@ App.player = (function () {
   function load(next, options) {
     var opts = options || {};
     checkpoint(true);
+    /* Where the service worker route is unusable, a story is played from a Blob
+     * holding the whole file. Letting go of the last one keeps a night of
+     * several stories from stacking up whole audiobooks in memory.
+     */
+    if (story && story.id !== next.id) App.media.release(story.id);
     story = next;
     asleep = false;
     fading = false;
@@ -185,20 +190,37 @@ App.player = (function () {
     });
   }
 
+  /* Resuming where a story stopped.
+   *
+   * A seek only sticks once the element knows how long the audio is. Setting
+   * currentTime before that is honoured by Chromium and quietly dropped by
+   * WebKit, which is why this waits for metadata rather than trusting the
+   * first attempt - and why the browser tests, which run in Chromium, cannot
+   * tell the difference.
+   */
+  var seekToken = 0;
+
   function seekWhenReady(seconds) {
+    var mine = ++seekToken;
+
+    function ready() {
+      return audio.readyState >= 1 && isFinite(audio.duration) && audio.duration > 0;
+    }
+
     function trySeek() {
+      if (!ready()) return false;
       try {
-        if (audio.readyState >= 1 && isFinite(audio.duration) && audio.duration > 0) {
-          audio.currentTime = Math.min(seconds, Math.max(0, audio.duration - 2));
-          return true;
-        }
-        audio.currentTime = seconds;
+        audio.currentTime = Math.min(seconds, Math.max(0, audio.duration - 2));
         return true;
       } catch (err) { void err; return false; }
     }
+
     if (trySeek()) return;
+    // Optimistic, for engines that queue it; the listener is what makes it stick.
+    try { audio.currentTime = seconds; } catch (err) { void err; }
     audio.addEventListener('loadedmetadata', function once() {
       audio.removeEventListener('loadedmetadata', once);
+      if (mine !== seekToken) return;   // another story was loaded meanwhile
       trySeek();
     });
   }

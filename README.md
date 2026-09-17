@@ -19,7 +19,17 @@ npm run serve               # http://127.0.0.1:8777
 npm test                    # compatibility check, unit tests, browser tests
 ```
 
-There is no build step. The files you edit are the files that ship.
+There is no build step. The files you edit are the files that ship. The one
+dependency that reaches the phone is Preact (with `htm`), vendored in
+`assets/vendor/` as plain scripts and used by `assets/js/lists.js` to draw the
+library list and the queue; everything else on the screen is still built by
+hand.
+
+    npm run parity              # proves a change did not alter the home screen
+
+`npm run parity` renders the two lists against a previous commit and against
+the working tree, then compares the markup and the screenshots of four states.
+It is what proved the move to Preact changed nothing a child would see.
 
 ---
 

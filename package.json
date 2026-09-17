@@ -12,7 +12,8 @@
     "test:pages": "node test/pages.test.js",
     "test": "npm run check && npm run test:tags && npm run test:artwork && npm run test:browser && npm run test:pages",
     "icons": "python3 scripts/make-icons.py",
-    "test:artwork": "node test/artwork.test.js"
+    "test:artwork": "node test/artwork.test.js",
+    "parity": "bash scripts/parity.sh"
   },
   "devDependencies": {
     "playwright": "^1.49.0"

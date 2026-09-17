@@ -95,9 +95,11 @@ function writeWav(file, seconds) {
   await ctx.addInitScript(NO_ARTWORK_HOSTS);
   const page = await ctx.newPage();
   const errors = [];
-  page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+  let probing = false;
+  page.on('pageerror', (e) => { if (!probing) errors.push('pageerror: ' + e.message); });
   page.on('console', (m) => {
     // The 416 probe below is deliberate; everything else is a real problem.
+    if (probing) return;   // a test is deliberately poking at a dead URL
     if (m.type() === 'error' && m.text().indexOf('416') < 0) errors.push('console: ' + m.text());
   });
 
@@ -706,6 +708,113 @@ function writeWav(file, seconds) {
   check('and the night ends when the second one does',
     !counted.playing && counted.curtain, JSON.stringify(counted));
   check('leaving the queue empty', (await lineupTitles()).length === 0, JSON.stringify(await lineupTitles()));
+
+  /* ============================================================================
+     Regressions. Each of these was a real bug, and each test was written to
+     fail against the code before its fix.
+     ========================================================================== */
+
+  /* 1. Resuming where a story stopped. WebKit drops a seek made before the
+     element knows the duration; Chromium queues it, which is why this has to
+     make Chromium behave like WebKit for the test to mean anything. */
+  const resumedSeek = await page.evaluate(async () => {
+    const proto = window.HTMLMediaElement.prototype;
+    const real = Object.getOwnPropertyDescriptor(proto, 'currentTime');
+    Object.defineProperty(proto, 'currentTime', {
+      configurable: true,
+      get: function () { return real.get.call(this); },
+      set: function (value) {
+        if (this.readyState < 1) return;      // WebKit: dropped on the floor
+        real.set.call(this, value);
+      },
+    });
+    try {
+      await App.player.load(App.debug.stories()[0], { autoplay: false, startAt: 12 });
+      await new Promise((r) => setTimeout(r, 1500));
+      return { at: App.player.position(), len: App.player.duration() };
+    } finally {
+      Object.defineProperty(proto, 'currentTime', real);
+    }
+  });
+  check('a story resumes where it stopped even when early seeks are dropped',
+    resumedSeek.at > 10 && resumedSeek.at < 14, JSON.stringify(resumedSeek));
+
+  /* 2. The whole-file Blob route is the fallback when a media element will not
+     load through the service worker. Switching stories used to keep every one
+     of them in memory. */
+  probing = true;   // the check below fetches a URL it expects to be dead
+  const blobs = await page.evaluate(async () => {
+    App.media.demote();
+    const first = App.debug.stories()[0];
+    const second = App.debug.stories()[1];
+    const url = await App.media.blobUrl(first);
+    await App.player.load(second, { autoplay: false });
+    let stillThere = true;
+    try { await fetch(url); } catch (err) { stillThere = false; }
+    return { stillThere, two: !!second };
+  });
+  probing = false;
+  check('the last story’s audio is let go of when another loads',
+    blobs.two && !blobs.stillThere, JSON.stringify(blobs));
+
+  /* 3. Taking the playing story out of the queue left nothing to advance to,
+     because "what follows this one" could no longer find it. */
+  const advancedAnyway = await page.evaluate(async () => {
+    const a = App.debug.stories()[0];
+    const b = App.debug.stories()[1];
+    App.debug.lineup().forEach((s) => App.debug.togglePick(s.id));    // empty it
+    App.debug.togglePick(a.id);
+    App.debug.togglePick(b.id);
+    await App.player.load(a, { autoplay: true });
+    await new Promise((r) => setTimeout(r, 800));
+    App.debug.togglePick(a.id);                                       // out it goes
+    App.player.seekTo(App.player.duration());
+    await new Promise((r) => setTimeout(r, 4000));
+    const now = App.player.currentStory();
+    return { playing: now && now.title, wanted: b.title };
+  });
+  check('a story taken out of the queue mid-play still runs on into the next',
+    advancedAnyway.playing === advancedAnyway.wanted, JSON.stringify(advancedAnyway));
+
+  /* 4. The orphan sweep runs once, 8 seconds in. An import running at that
+     moment used to mean it never ran again all session. */
+  const sweep = await page.evaluate(async () => {
+    const calls = [];
+    const realIdle = App.caps.idle;
+    App.caps.idle = function (fn, delay) { calls.push(delay); };
+    App.debug.setImporting(true);
+    let deferred;
+    try {
+      deferred = App.debug.reclaimOrphanChunks();
+    } finally {
+      App.caps.idle = realIdle;
+      App.debug.setImporting(false);
+    }
+    return { deferred, calls };
+  });
+  check('the orphan sweep waits for an import rather than giving up',
+    sweep.deferred === 'deferred' && sweep.calls.length === 1, JSON.stringify(sweep));
+
+  /* 5. The library list is drawn by Preact now. Rows have to survive a
+     re-render, or a drag or a hold in progress loses the node under the finger
+     and the gesture is dropped without a word. */
+  await page.waitForTimeout(2000);
+  const kept = await page.evaluate(async () => {
+    const row = document.querySelector('#library-rows .row');
+    row.setAttribute('data-marked', 'yes');
+    const before = document.querySelectorAll('#library-rows .row').length;
+    App.debug.renderAll();
+    await new Promise((r) => setTimeout(r, 100));
+    const after = document.querySelector('#library-rows .row');
+    return { same: after === row, marked: !!after && after.getAttribute('data-marked') === 'yes',
+             before, now: document.querySelectorAll('#library-rows .row').length };
+  });
+  check('a re-render keeps the row nodes rather than rebuilding them',
+    kept.same && kept.marked && kept.before === kept.now, JSON.stringify(kept));
+
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(1200);
+
 
   await page.evaluate(async () => {
     const found = App.debug.stories().filter(function (s) { return s.title === 'Moon Boat'; });

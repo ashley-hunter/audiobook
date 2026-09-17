@@ -248,6 +248,11 @@ window.App = window.App || {};
     return 0;
   }
 
+  function inQueue(id) {
+    var story = byId(id);
+    return !!(story && story.pickAt);
+  }
+
   function nextAfter(id) {
     var chosen = lineup();
     for (var i = 0; i < chosen.length; i++) {
@@ -348,7 +353,12 @@ window.App = window.App || {};
    * an import is running, because those chunks have no story row yet either.
    */
   function reclaimOrphanChunks() {
-    if (importing) return;
+    // An import running now owns chunks with no story row yet, so this waits
+    // rather than giving up for the rest of the session.
+    if (importing) {
+      App.caps.idle(reclaimOrphanChunks, 20000);
+      return 'deferred';
+    }
     App.store.chunkOwners().then(function (owners) {
       var known = {};
       for (var i = 0; i < stories.length; i++) known[stories[i].id] = true;
@@ -447,24 +457,7 @@ window.App = window.App || {};
   }
 
   function renderPicks(picks) {
-    var host = $('picks');
-    ui.clear(host);
-    picks.forEach(function (story, index) {
-      var wrap = ui.el('div', 'pick');
-      var button = ui.el('button', 'pick-btn');
-      button.type = 'button';
-      var frame = ui.el('span', 'pick-frame');
-      var cover = ui.el('span', 'cover pick-cover');
-      ui.paintCover(cover, story);
-      frame.appendChild(cover);
-      frame.appendChild(ui.el('span', 'pick-no', String(index + 1)));
-      button.appendChild(frame);
-      button.appendChild(ui.el('span', 'pick-title', story.title));
-      button.appendChild(ui.el('span', 'pick-mins', ui.minutes(story.len)));
-      button.onclick = function () { openStory(story.id); };
-      wrap.appendChild(button);
-      host.appendChild(wrap);
-    });
+    App.lists.picks($('picks'), picks, { open: openStory });
   }
 
   function renderMoods(list) {
@@ -488,39 +481,11 @@ window.App = window.App || {};
   }
 
   function renderRows(host, list) {
-    ui.clear(host);
-    list.forEach(function (story) {
-      var row = ui.el('div', 'row' + (story.missing ? ' is-missing' : ''));
-
-      var open = ui.el('button', 'row-open');
-      open.type = 'button';
-      var cover = ui.el('span', 'cover cover-row');
-      ui.paintCover(cover, story);
-      var textWrap = ui.el('span', 'row-text');
-      textWrap.appendChild(ui.el('span', 'row-title', story.title));
-      textWrap.appendChild(ui.el('span', 'row-meta', rowMeta(story)));
-      open.appendChild(cover);
-      open.appendChild(textWrap);
-      open.onclick = function () { openStory(story.id); };
-
-      var heart = ui.el('button', 'row-heart' + (story.fav ? ' is-on' : ''), '♥');
-      heart.type = 'button';
-      heart.setAttribute('aria-label', story.fav ? 'Unheart this story' : 'Heart this story');
-      heart.onclick = function (event) {
-        event.stopPropagation();
-        toggleFav(story.id);
-      };
-
-      row.appendChild(open);
-      row.appendChild(heart);
-      if (!story.missing) {
-        var more = ui.el('button', 'row-more', '\u22ef');
-        more.type = 'button';
-        more.setAttribute('aria-label', 'More for ' + story.title);
-        more.onclick = function () { openStoryMenu(story); };
-        row.appendChild(more);
-      }
-      host.appendChild(row);
+    App.lists.rows(host, list, {
+      open: openStory,
+      fav: toggleFav,
+      menu: openStoryMenu,
+      meta: rowMeta
     });
   }
 
@@ -746,7 +711,9 @@ window.App = window.App || {};
       },
       ended: function (sleepCarried) {
         ui.toggleClass($('asleep'), 'is-on', false);
-        var next = nextAfter(currentId);
+        /* Taken out of the queue while it played? Then there is no "after this
+         * one" to find, and the head of the queue is what comes next. */
+        var next = nextAfter(currentId) || (inQueue(currentId) ? null : lineup()[0]);
         unqueue(currentId);
         /* Only a deliberate line-up runs on. Falling out of one story and into
          * the rest of the library at bedtime is the opposite of what this app
@@ -1061,7 +1028,8 @@ window.App = window.App || {};
       while (node && node.parentNode !== host) node = node.parentNode;
       if (!node) return;
       var p = point(event);
-      drag = { node: node, start: p, last: p, held: false, on: false, from: indexIn(node), shift: 0 };
+      drag = { node: node, start: p, last: p, held: false, on: false,
+               from: indexIn(node), after: node.nextElementSibling, shift: 0 };
       drag.timer = setTimeout(function () {
         drag.held = true;
         drag.grab = p.x - node.getBoundingClientRect().left;   // finger's place on the cover
@@ -1137,6 +1105,10 @@ window.App = window.App || {};
       ui.toggleClass(done.node, 'is-dragging', false);
       // -1 if the strip was rebuilt mid-drag, in which case there is nothing to move.
       var to = indexIn(done.node);
+      /* The drag moved this node by hand, behind the renderer's back. Putting it
+       * back where it started leaves the DOM matching what was last rendered,
+       * so the re-render below is the only thing that reorders anything. */
+      if (to >= 0) host.insertBefore(done.node, done.after);
       if (to >= 0) movePick(done.from, to);
     }
 
@@ -1582,6 +1554,8 @@ window.App = window.App || {};
     lineup: lineup,
     togglePick: togglePick,
     reclaimOrphanChunks: reclaimOrphanChunks,
+    setImporting: function (value) { importing = value; },
+    renderAll: renderAll,
     verifyStorage: verifyStorage,
     findArtwork: findArtwork
   };
