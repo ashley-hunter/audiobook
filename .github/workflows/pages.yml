@@ -54,15 +54,18 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}-chromium-webkit
 
-      - name: Install Chromium
+      # Chromium runs the main suite; WebKit runs the built site, because it is
+      # the engine Safari is built on and a Chromium standing in for it has
+      # been wrong before.
+      - name: Install Chromium and WebKit
         if: steps.browser-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium webkit
 
       - name: Install system dependencies
         if: steps.browser-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
+        run: npx playwright install-deps chromium webkit
 
       # An iPhone 6 tops out at Safari 12, so anything newer has to be behind a
       # detection in assets/js/capabilities.js.
@@ -72,6 +75,9 @@ jobs:
       - name: Tag reader tests
         run: npm run test:tags
 
+      - name: Cover art tests
+        run: npm run test:artwork
+
       - name: Browser tests
         run: npm run test:browser
 
@@ -79,6 +85,10 @@ jobs:
       # a subdirectory, then with the network switched off.
       - name: Deployment shape and offline tests
         run: npm run test:pages
+
+      # The published files, in a real WebKit rather than a Chromium.
+      - name: WebKit tests
+        run: npm run test:safari
 
   deploy:
     name: Deploy to Pages
@@ -103,11 +113,19 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '20'
+          cache: npm
 
       # Copies only what belongs on a phone, and refuses to publish a site whose
       # script tags and service worker shell list disagree with each other.
+      #
+      # `npm run build` rather than the build script on its own: the scripts the
+      # page loads are compiled from src/ and are not committed, so a checkout
+      # has nothing to publish until the compiler has run. Building without it
+      # failed here with "Missing sw.js", after a test job that had passed -
+      # the tests compile as a side effect and the deploy did not.
+      - run: npm ci
       - name: Build the site
-        run: node scripts/build-site.js
+        run: npm run build
 
       - id: pages
         uses: actions/configure-pages@v5
