@@ -77,7 +77,7 @@ function normalise(html) {
     const rows = document.querySelectorAll('.import-status');
     return rows.length === 2 && [].every.call(rows, (r) => r.textContent === 'Ready');
   }, null, { timeout: 60000 });
-  await page.locator('#add-close').click();
+  await page.evaluate(() => document.getElementById('add-close').click());
   await page.waitForTimeout(600);
 
   // Covers are striped from a hue picked at import time, and the greeting
@@ -108,14 +108,30 @@ function normalise(html) {
       rows: document.getElementById('library-rows').innerHTML,
       picks: document.getElementById('picks').innerHTML,
       empty: document.getElementById('picks-empty').hidden,
+      moods: document.getElementById('moods').innerHTML,
     }));
     out.push(`===== ${label} =====`);
     out.push('--- library rows');
     out.push(normalise(html.rows));
     out.push('--- picks strip');
     out.push(normalise(html.picks));
+    out.push('--- moods');
+    out.push(normalise(html.moods));
     out.push(`--- picks-empty hidden: ${html.empty}`);
     await shot(label);
+  };
+
+  // The screens that are not the home screen: whatever is built by script on
+  // each, dumped the same way.
+  const dumpPart = async (label, id, shotOf) => {
+    const html = await page.evaluate((id) => document.getElementById(id).innerHTML, id);
+    out.push(`===== ${label} =====`);
+    out.push(normalise(html));
+    if (shotOf) {
+      const file = path.join(path.dirname(OUT), path.basename(OUT, '.txt') + '-' +
+        label.replace(/[^a-z0-9]+/gi, '-').toLowerCase() + '.png');
+      await page.locator(shotOf).screenshot({ path: file });
+    }
   };
 
   await dump('fresh library, empty queue');
@@ -139,6 +155,54 @@ function normalise(html) {
   });
   await page.waitForTimeout(300);
   await dump('one story whose audio was cleared');
+
+  /* ---- the rest of the screens ---- */
+
+  await page.evaluate(() => { document.getElementById('library').scrollTop = 0; });
+  await page.evaluate(() => document.querySelector('#library-rows .row-more').click());
+  await page.waitForTimeout(400);
+  await dumpPart('story menu', 'menu-actions', '#menu .confirm-card');
+  await page.evaluate(() => { const b = [].slice.call(document.querySelectorAll('#menu-actions .confirm-btn')); b[b.length - 1].click(); });
+  await page.waitForTimeout(400);
+
+  await page.evaluate(() => document.querySelector('#library-rows .row-open').click());
+  await page.waitForTimeout(1200);
+  await page.evaluate(() => document.getElementById('open-sheet').click());
+  await page.waitForTimeout(600);
+  await dumpPart('sleep timer sheet', 'timer-options', '#sheet');
+  await page.evaluate(() => document.getElementById('sheet-close').click());
+  await page.waitForTimeout(400);
+  await dumpPart('mini player', 'mini', null);
+  await page.evaluate(() => document.getElementById('player-close').click());
+  await page.waitForTimeout(700);
+
+  // The scrolled library would put the moon out of reach, and Playwright
+  // scrolling the whole app to find it brings other screens into the way.
+  await page.evaluate(() => { document.getElementById('library').scrollTop = 0; });
+  const moon = await page.locator('#moon-btn').boundingBox();
+  await page.mouse.move(moon.x + moon.width / 2, moon.y + moon.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(3400);
+  await page.mouse.up();
+  await page.waitForTimeout(700);
+  await dumpPart('parent controls, playback switches', 'toggles', null);
+  await dumpPart('parent controls, stored stories', 'stored-list', null);
+  await page.evaluate(() => document.getElementById('parent-close').click());
+  await page.waitForTimeout(600);
+
+  await page.evaluate(() => document.getElementById('add-btn').click());
+  await page.waitForTimeout(500);
+  await dumpPart('add screen, import rows', 'imports', '#add .paper-inner');
+  await page.evaluate(() => document.getElementById('add-close').click());
+  await page.waitForTimeout(400);
+
+  await page.evaluate(async () => {
+    const stories = App.debug.stories().slice();
+    for (const s of stories) await App.store.deleteStory(s.id);
+  });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(1200);
+  await dumpPart('empty library', 'library-empty', '#screen-home');
 
   fs.writeFileSync(OUT, out.join('\n') + '\n');
   console.log(`Wrote ${OUT}`);
