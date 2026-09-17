@@ -29,70 +29,88 @@ concurrency:
   cancel-in-progress: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) }}
 
 jobs:
-  test:
-    name: Checks and tests
+  # The fast half: the floor check, the tag and artwork unit tests, and the
+  # view tests, which render the real lists in a browser in under a second.
+  checks:
+    name: Checks and fast tests
     runs-on: ubuntu-latest
-    timeout-minutes: 15   # the suite takes about 90 seconds; anything near this is a hang
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
-
       - uses: actions/setup-node@v5
         with:
           node-version: '20'
           cache: npm
-
       - run: npm ci
 
-      # Playwright pins a browser build per release, so the cache key is the
-      # resolved version rather than the lockfile hash.
       - name: Resolve the Playwright version
         id: pw
         run: echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
-
       - name: Restore the browser cache
         id: browser-cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}-chromium-webkit
-
-      # Chromium runs the main suite; WebKit runs the built site, because it is
-      # the engine Safari is built on and a Chromium standing in for it has
-      # been wrong before.
       - name: Install Chromium and WebKit
         if: steps.browser-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium webkit
-
       - name: Install system dependencies
         if: steps.browser-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium webkit
 
       # An iPhone 6 tops out at Safari 12, so anything newer has to be behind a
-      # detection in assets/js/capabilities.js.
+      # detection in src/capabilities.ts.
       - name: Safari 12 compatibility check
         run: npm run check
-
       - name: Tag reader tests
         run: npm run test:tags
-
       - name: Cover art tests
         run: npm run test:artwork
+      - name: View tests
+        run: npm run test:views
 
-      - name: Browser tests
-        run: npm run test:browser
+  # The slow half. Each of these drives a browser end to end and spends most of
+  # its time waiting on audio, so they run at the same time rather than in a
+  # queue: the whole thing costs what the longest one costs.
+  e2e:
+    name: ${{ matrix.suite }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false      # one failing suite should not hide the others
+      matrix:
+        suite: [browser, oldphone, artfake, fade, pages, safari]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
 
-      # Builds the real artifact and exercises it the way Pages serves it: from
-      # a subdirectory, then with the network switched off.
-      - name: Deployment shape and offline tests
-        run: npm run test:pages
+      - name: Resolve the Playwright version
+        id: pw
+        run: echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Restore the browser cache
+        id: browser-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}-chromium-webkit
+      - name: Install Chromium and WebKit
+        if: steps.browser-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium webkit
+      - name: Install system dependencies
+        if: steps.browser-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium webkit
 
-      # The published files, in a real WebKit rather than a Chromium.
-      - name: WebKit tests
-        run: npm run test:safari
+      - name: ${{ matrix.suite }} tests
+        run: npm run test:${{ matrix.suite }}
 
   deploy:
     name: Deploy to Pages
-    needs: test
+    needs: [checks, e2e]
     # Only the default branch publishes, whatever it happens to be called.
     if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest

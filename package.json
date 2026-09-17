@@ -10,18 +10,27 @@
     "test:tags": "node test/tags.test.js",
     "test:browser": "node test/browser.test.js",
     "test:pages": "node test/pages.test.js",
-    "test": "npm run check && npm run test:tags && npm run test:artwork && npm run test:browser && npm run test:pages && npm run test:safari",
+    "test": "npm run check && npm run test:tags && npm run test:artwork && npm run test:views && npm run test:browser && npm run test:oldphone && npm run test:artfake && npm run test:fade && npm run test:pages && npm run test:safari",
     "icons": "python3 scripts/make-icons.py",
     "test:artwork": "node test/artwork.test.js",
     "parity": "bash scripts/parity.sh",
     "test:safari": "npm run build && node test/safari.test.js",
-    "compile": "tsc -p tsconfig.json && tsc -p tsconfig.sw.json"
+    "compile": "tsc -p tsconfig.json && tsc -p tsconfig.sw.json",
+    "test:views": "npm run compile && vitest run",
+    "test:oldphone": "node test/oldphone.test.js",
+    "test:artfake": "node test/artfake.test.js",
+    "test:fade": "node test/fade.test.js"
   },
   "devDependencies": {
     "@babel/core": "^8.0.5",
     "@babel/preset-env": "^8.0.5",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/preact": "^3.2.4",
+    "@vitest/browser": "^5.0.1",
+    "@vitest/browser-playwright": "^5.0.1",
     "acorn": "^8.18.0",
     "playwright": "^1.49.0",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
   }
 }
