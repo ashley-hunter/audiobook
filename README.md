@@ -19,8 +19,10 @@ npm run serve               # http://127.0.0.1:8777
 npm test                    # compatibility check, unit tests, browser tests, WebKit
 ```
 
-There is no build step. The files you edit are the files that ship. The one
-dependency that reaches the phone is Preact (with `htm`), vendored in
+The files you edit are, near enough, the files that ship: the build copies
+them, rewrites anything newer than the floor (see below), and stamps the
+service worker. Nothing is bundled or renamed. The one dependency that reaches
+the phone is Preact (with `htm`), vendored in
 `assets/vendor/` as plain scripts and used by `assets/js/lists.js` to draw the
 library list and the queue; everything else on the screen is still built by
 hand.
@@ -32,7 +34,17 @@ hand.
 working tree, then compares the markup and the screenshots of eight states. It
 is what proved the move to Preact changed nothing a child would see.
 
-**Is Babel needed for the floor?** No, and this is checked rather than assumed.
+**The published files are put through Babel**, targeting Safari 12, so a slip
+in the source or a dependency that updates into modern syntax is rewritten
+rather than shipped and found on a bedroom floor. Nothing Safari 12 already
+understands is touched, so the output stays close to what was written, and a
+file that is minified when it goes in stays minified. Then every published file
+is parsed at ES2018 - the floor's language level - and the build stops rather
+than publishing anything newer. Syntax only: no polyfills are carried, because
+a missing API has to sit behind a capability check instead.
+
+**Is Babel strictly needed for the floor?** No - it is the belt to the check's
+braces.
 Safari 12 is an ES2018 engine - it has classes, arrow functions, template
 literals, spread and async/await, and it has not got optional chaining or
 anything later. Nothing that ships, Preact and htm included, uses syntax newer

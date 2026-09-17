@@ -68,6 +68,60 @@ function stampBuildId() {
   return id;
 }
 
+/* Rewrites every shipped script to what the oldest phone can read.
+ *
+ * The floor is Safari 12, and `scripts/check-ios12.js` refuses to ship syntax
+ * newer than that. This is the belt to that braces: the published files are
+ * put through Babel targeting Safari 12, so a slip in the source, or a
+ * dependency that updates into modern syntax, is rewritten rather than shipped
+ * and discovered on a bedroom floor. Nothing is down-levelled that Safari 12
+ * already understands, so the output stays close to what was written.
+ *
+ * Syntax only. Babel does not add missing APIs, and no polyfill is carried:
+ * anything post-floor has to sit behind a capability check, which the same
+ * script enforces.
+ */
+function downlevel() {
+  const babel = require('@babel/core');
+  const acorn = require('acorn');
+  for (const rel of listFiles(OUT, OUT, [])) {
+    if (!rel.endsWith('.js')) continue;
+    const file = path.join(OUT, rel);
+    const before = fs.readFileSync(file, 'utf8');
+    // A minified dependency stays minified: pretty-printing preact cost five
+    // kilobytes of payload for nobody's benefit.
+    const minified = before.length / before.split('\n').length > 200;
+    const result = babel.transformSync(before, {
+      filename: file,
+      babelrc: false,
+      configFile: false,
+      compact: minified,
+      sourceType: 'script',       // every file here is a plain script tag
+      presets: [[require.resolve('@babel/preset-env'), {
+        targets: { safari: '12' },
+        modules: false,
+      }]],
+    });
+    if (!result || typeof result.code !== 'string') {
+      console.error(`Could not rewrite ${rel} for the floor.`);
+      process.exit(1);
+    }
+    fs.writeFileSync(file, result.code + '\n');
+
+    /* What is published is what matters, so it is the published file that gets
+     * parsed at the floor's language level - after Babel, not before. If this
+     * ever fails, Babel was handed something it could not bring down to
+     * Safari 12 and the build stops rather than shipping it.
+     */
+    try {
+      acorn.parse(fs.readFileSync(file, 'utf8'), { ecmaVersion: 2018, sourceType: 'script' });
+    } catch (err) {
+      console.error(`${rel} is still newer than Safari 12 after Babel: ${err.message}`);
+      process.exit(1);
+    }
+  }
+}
+
 function listFiles(dir, base, out) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
@@ -94,6 +148,8 @@ for (const entry of INCLUDE) {
 // Pages serves the uploaded artifact as-is, but this costs nothing and makes
 // the intent explicit for any other static host that does run Jekyll.
 fs.writeFileSync(path.join(OUT, '.nojekyll'), '');
+
+downlevel();
 
 const shipped = listFiles(OUT, OUT, []);
 stampBuildId();

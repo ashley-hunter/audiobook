@@ -17,6 +17,8 @@
     "test:safari": "npm run build && node test/safari.test.js"
   },
   "devDependencies": {
+    "@babel/core": "^8.0.5",
+    "@babel/preset-env": "^8.0.5",
     "acorn": "^8.18.0",
     "playwright": "^1.49.0"
   }
