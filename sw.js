@@ -36,7 +36,7 @@ var SHELL = [
   'assets/js/importer.js',
   'assets/js/player.js',
   'assets/js/ui.js',
-  'assets/js/lists.js',
+  'assets/js/views.js',
   'assets/vendor/preact.umd.js',
   'assets/vendor/htm.umd.js',
   'assets/js/app.js',

@@ -21,6 +21,7 @@ window.App = window.App || {};
   var mood = 'All';
   var currentId = null;
   var importRows = {};
+  var importOrder = [];
   var holdTimer = null;
   var holdStart = 0;
   var persistedState = null;   // null until the browser has been asked
@@ -435,24 +436,7 @@ window.App = window.App || {};
   }
 
   function renderEmptyState(empty) {
-    ui.clear(empty);
-    var hiddenByParent = stories.length > 0;
-
-    empty.appendChild(ui.el('p', 'empty-title display display-sm',
-      hiddenByParent ? 'Stories are hidden' : 'No stories yet'));
-
-    empty.appendChild(ui.el('p', null, hiddenByParent
-      // The "Show in the library" switch lives on the Add screen, so the same
-      // button is the way back from here as well as the way to add more.
-      ? 'Turn "Show in the library" back on from the Add stories screen.'
-      : 'Bring in audio you already own. Files are copied into this app and stay on this phone.'));
-
-    var button = ui.el('button', 'empty-add');
-    button.type = 'button';
-    button.appendChild(ui.el('span', 'plus', '+'));
-    button.appendChild(document.createTextNode('Add stories'));
-    button.onclick = openAdd;
-    empty.appendChild(button);
+    App.views.emptyState(empty, stories.length > 0, { add: openAdd });
   }
 
   function homeSubtitle() {
@@ -479,31 +463,26 @@ window.App = window.App || {};
   }
 
   function renderPicks(picks) {
-    App.lists.picks($('picks'), picks, { open: openStory });
+    App.views.picks($('picks'), picks, { open: openStory });
   }
 
   function renderMoods(list) {
-    var host = $('moods');
     var names = ['All'];
     list.forEach(function (s) {
       if (s.mood && names.indexOf(s.mood) < 0) names.push(s.mood);
     });
-    ui.clear(host);
-    // With a single category the filter row is noise, so it stays hidden.
+    // With a single category the filter row is noise, so it stays empty.
     if (names.length < 3) {
       mood = 'All';
-      return;
+      names = [];
     }
-    names.forEach(function (name) {
-      var chip = ui.el('button', 'mood' + (mood === name ? ' is-on' : ''), name);
-      chip.type = 'button';
-      chip.onclick = function () { mood = name; renderHome(); };
-      host.appendChild(chip);
+    App.views.moods($('moods'), names, mood, {
+      pick: function (name) { mood = name; renderHome(); }
     });
   }
 
   function renderRows(host, list) {
-    App.lists.rows(host, list, {
+    App.views.rows(host, list, {
       open: openStory,
       fav: toggleFav,
       menu: openStoryMenu,
@@ -635,41 +614,21 @@ window.App = window.App || {};
    * however many are lined up after it.
    */
   function renderTimerOptions() {
-    var host = $('timer-options');
     var story = current();
     var byStories = App.player.sleepByStories();
     var minutes = byStories ? 0 : App.player.currentSleepMinutes();
-    ui.clear(host);
 
-    host.appendChild(ui.el('p', 'timer-group', 'Minutes'));
-    var row = ui.el('div', 'timer-row');
-    TIMER_MINUTES.forEach(function (m) {
-      row.appendChild(timerChip(String(m), minutes === m, function () { App.player.setSleepMinutes(m); }));
+    App.views.timerOptions($('timer-options'), {
+      minutes: TIMER_MINUTES,
+      maxMinutes: MAX_MINUTES,
+      chosenMinutes: minutes,
+      custom: TIMER_MINUTES.indexOf(minutes) < 0 ? minutes : 0,
+      chosenStories: byStories,
+      mostStories: Math.min(MAX_STORIES, 1 + (story ? queuedAfter(story.id) : 0))
+    }, {
+      minutes: function (m) { chooseTimer(function () { App.player.setSleepMinutes(m); }); },
+      stories: function (n) { chooseTimer(function () { App.player.setSleepStories(n); }); }
     });
-    row.appendChild(customMinutes(TIMER_MINUTES.indexOf(minutes) < 0 ? minutes : 0));
-    host.appendChild(row);
-
-    host.appendChild(ui.el('p', 'timer-group', 'Stories'));
-    row = ui.el('div', 'timer-row');
-    var most = Math.min(MAX_STORIES, 1 + (story ? queuedAfter(story.id) : 0));
-    for (var n = 1; n <= most; n++) row.appendChild(storyChip(n, byStories === n));
-    host.appendChild(row);
-    if (most === 1) {
-      host.appendChild(ui.el('p', 'timer-hint', 'Line up more of tonight\u2019s picks to play several in a row.'));
-    }
-  }
-
-  function storyChip(count, on) {
-    return timerChip(count === 1 ? 'This one' : String(count), on, function () {
-      App.player.setSleepStories(count);
-    });
-  }
-
-  function timerChip(label, on, choose) {
-    var button = ui.el('button', 'timer-opt' + (on ? ' is-on' : ''), label);
-    button.type = 'button';
-    button.onclick = function () { chooseTimer(choose); };
-    return button;
   }
 
   function chooseTimer(choose) {
@@ -677,33 +636,6 @@ window.App = window.App || {};
     closeSheet();
     renderTimerOptions();
     App.player.play();
-  }
-
-  // The keypad on iOS has no return key, so the value is taken on `change`,
-  // which fires when its Done button closes the keyboard.
-  function customMinutes(value) {
-    var wrap = ui.el('label', 'timer-opt timer-custom' + (value ? ' is-on' : ''));
-    var input = document.createElement('input');
-    input.type = 'number';
-    input.min = '1';
-    input.max = String(MAX_MINUTES);
-    input.step = '1';
-    input.setAttribute('pattern', '[0-9]*');   // the number pad on iOS 12
-    input.setAttribute('inputmode', 'numeric');
-    input.setAttribute('aria-label', 'Other number of minutes');
-    input.placeholder = 'Other';
-    if (value) input.value = String(value);
-    input.onchange = function () {
-      var minutes = parseInt(input.value, 10);
-      if (!(minutes >= 1 && minutes <= MAX_MINUTES)) {
-        ui.toast('Pick between 1 and ' + MAX_MINUTES + ' minutes.');
-        input.value = value ? String(value) : '';
-        return;
-      }
-      chooseTimer(function () { App.player.setSleepMinutes(minutes); });
-    };
-    wrap.appendChild(input);
-    return wrap;
   }
 
   function sleepLabel(secondsLeft) {
@@ -1001,18 +933,16 @@ window.App = window.App || {};
     items.push({ label: 'Cancel', run: null });
 
     var node = $('menu');
-    var host = $('menu-actions');
     ui.text($('menu-title'), story.title);
-    ui.clear(host);
-    items.forEach(function (item) {
-      var button = ui.el('button', 'confirm-btn', item.label);
-      button.type = 'button';
-      button.onclick = function () {
-        closeStoryMenu();
-        if (item.run) item.run();
+    App.views.menuActions($('menu-actions'), items.map(function (item) {
+      return {
+        label: item.label,
+        run: function () {
+          closeStoryMenu();
+          if (item.run) item.run();
+        }
       };
-      host.appendChild(button);
-    });
+    }));
     $('menu-scrim').onclick = closeStoryMenu;
     ui.toggleClass(node, 'is-on', true);
     node.setAttribute('aria-hidden', 'false');
@@ -1176,31 +1106,24 @@ window.App = window.App || {};
     }, true);
   }
 
+  var PLAYBACK_TOGGLES = [
+    { key: 'dim', label: 'Screen dims while playing' },
+    { key: 'resume', label: 'Remember where each story stopped' },
+    { key: 'artwork', label: 'Find cover art online' }
+  ];
+
   function renderToggles() {
     var settings = App.settings.get();
-    var host = $('toggles');
-    var rows = [
-      { key: 'dim', label: 'Screen dims while playing' },
-      { key: 'resume', label: 'Remember where each story stopped' },
-      { key: 'artwork', label: 'Find cover art online' }
-    ];
-    ui.clear(host);
-    rows.forEach(function (row) {
-      var on = settings[row.key] !== false;
-      var button = ui.el('button', 'card-row');
-      button.type = 'button';
-      button.appendChild(document.createTextNode(row.label));
-      var sw = ui.el('span', 'switch' + (on ? ' is-on' : ''));
-      sw.appendChild(ui.el('span', 'knob'));
-      button.appendChild(sw);
-      button.onclick = function () {
+    App.views.toggles($('toggles'), PLAYBACK_TOGGLES.map(function (row) {
+      return { key: row.key, label: row.label, on: settings[row.key] !== false };
+    }), {
+      toggle: function (key, on) {
         var patch = {};
-        patch[row.key] = !on;
+        patch[key] = on;
         App.settings.set(patch);
         renderToggles();
         renderHome();
-      };
-      host.appendChild(button);
+      }
     });
   }
 
@@ -1211,22 +1134,8 @@ window.App = window.App || {};
     ui.text($('storage-note'), storageNote());
 
     var host = $('stored-list');
-    ui.clear(host);
     ui.show(host, stories.length > 0);
-    stories.forEach(function (story) {
-      var row = ui.el('div', 'stored');
-      var textWrap = ui.el('div', 'stored-text');
-      textWrap.appendChild(ui.el('p', 'stored-name', story.title));
-      var meta = ui.el('p', 'stored-meta' + (story.missing ? ' is-missing' : ''),
-        story.missing ? 'Audio was cleared by iOS' : ui.bytes(story.size) + ' · ' + ui.minutes(story.len));
-      textWrap.appendChild(meta);
-      var remove = ui.el('button', 'remove', 'Remove');
-      remove.type = 'button';
-      remove.onclick = function () { removeStory(story); };
-      row.appendChild(textWrap);
-      row.appendChild(remove);
-      host.appendChild(row);
-    });
+    App.views.storedList(host, stories, { remove: removeStory });
   }
 
   function storageNote() {
@@ -1356,86 +1265,79 @@ window.App = window.App || {};
 
   function addImportRow(file) {
     file.__key = 'imp' + (++rowSeq);
-    var host = $('imports');
-    var node = ui.el('div', 'import');
-
-    var art = ui.el('label', 'import-art');
-    art.style.backgroundImage = ui.stripes(App.importer.hash(file.name) % 360, true);
-    var artLabel = ui.el('span', 'art-label', 'ART');
-    var artInput = document.createElement('input');
-    artInput.type = 'file';
-    artInput.accept = 'image/*';
-    art.appendChild(artLabel);
-    art.appendChild(artInput);
-
-    var textWrap = ui.el('div', 'import-text');
-    textWrap.appendChild(ui.el('p', 'import-name', App.importer.titleFromName(file.name)));
-    var bar = ui.el('div', 'import-bar');
-    var fill = ui.el('span');
-    bar.appendChild(fill);
-    textWrap.appendChild(bar);
-
-    var status = ui.el('div', 'import-status', '0%');
-
-    node.appendChild(art);
-    node.appendChild(textWrap);
-    node.appendChild(status);
-    host.appendChild(node);
-
-    var row = { node: node, fill: fill, status: status, art: art, artLabel: artLabel, artInput: artInput, storyId: null, done: false };
-    artInput.onchange = function () {
-      var image = artInput.files && artInput.files[0];
-      artInput.value = '';
-      if (!image) return;
-      if (!row.storyId) {
-        ui.toast('Wait for the import to finish, then pick a picture.');
-        return;
-      }
-      App.importer.setArt(row.storyId, image).then(function () {
-        return App.media.artUrl(row.storyId);
-      }).then(function (url) {
-        if (url) art.style.backgroundImage = 'url("' + url + '")';
-        artLabel.textContent = 'EDIT';
-        var story = byId(row.storyId);
-        if (story) story.hasArt = true;
-        renderAll();
-      })['catch'](function () { ui.toast('That picture could not be used.'); });
+    var row = {
+      key: file.__key,
+      name: App.importer.titleFromName(file.name),
+      art: ui.stripes(App.importer.hash(file.name) % 360, true),
+      artLabel: 'ART',
+      percent: 0,
+      status: '0%',
+      state: '',
+      storyId: null,
+      done: false
     };
-
     importRows[file.__key] = row;
+    importOrder.push(row);
+    renderImports();
     return row;
+  }
+
+  function renderImports() {
+    App.views.imports($('imports'), importOrder, { art: chooseImportArt });
+  }
+
+  function chooseImportArt(row, image) {
+    if (!row.storyId) {
+      ui.toast('Wait for the import to finish, then pick a picture.');
+      return;
+    }
+    App.importer.setArt(row.storyId, image).then(function () {
+      return App.media.artUrl(row.storyId);
+    }).then(function (url) {
+      if (url) {
+        row.art = 'url("' + url + '")';
+        row.artLabel = 'EDIT';
+      }
+      var story = byId(row.storyId);
+      if (story) story.hasArt = true;
+      renderImports();
+      renderAll();
+    })['catch'](function () { ui.toast('That picture could not be used.'); });
   }
 
   function setRowProgress(row, fraction) {
     if (!row) return;
     var pct = Math.round(fraction * 100);
-    row.fill.style.width = pct + '%';
-    row.status.textContent = pct + '%';
+    if (pct === row.percent) return;      // the same bar, redrawn, helps nobody
+    row.percent = pct;
+    row.status = pct + '%';
+    renderImports();
   }
 
   function finishRow(row, story) {
     if (!row) return;
     row.done = true;
     row.storyId = story.id;
-    ui.toggleClass(row.node, 'is-done', true);
-    row.fill.style.width = '100%';
-    row.status.textContent = 'Ready';
-    row.node.querySelector('.import-name').textContent = story.title;
-    if (story.hasArt) {
-      App.media.artUrl(story.id).then(function (url) {
-        if (url) {
-          row.art.style.backgroundImage = 'url("' + url + '")';
-          row.artLabel.textContent = 'EDIT';
-        }
-      });
-    }
+    row.state = 'done';
+    row.percent = 100;
+    row.status = 'Ready';
+    row.name = story.title;
+    renderImports();
+    if (!story.hasArt) return;
+    App.media.artUrl(story.id).then(function (url) {
+      if (!url) return;
+      row.art = 'url("' + url + '")';
+      row.artLabel = 'EDIT';
+      renderImports();
+    });
   }
 
   function failRow(row, message) {
     if (!row) return;
-    ui.toggleClass(row.node, 'is-failed', true);
-    row.fill.style.width = '100%';
-    row.status.textContent = 'Failed';
+    row.state = 'failed';
+    row.percent = 100;
+    row.status = 'Failed';
+    renderImports();
     ui.toast(message);
   }
 
@@ -1529,7 +1431,7 @@ window.App = window.App || {};
   function openAdd() {
     ui.toggleClass($('add'), 'is-open', true);
     $('add').setAttribute('aria-hidden', 'false');
-    var hasImports = !!$('imports').firstChild;
+    var hasImports = importOrder.length > 0;
     ui.show($('imports-block'), hasImports);
     ui.show($('ours-block'), hasImports || stories.length > 0);
     ui.show($('add-empty'), !hasImports && stories.length === 0);

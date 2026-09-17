@@ -52,6 +52,9 @@ function normalise(html) {
   return String(html)
     .replace(/\s+/g, ' ')
     .replace(/background-image:[^"';]*;?/g, 'background-image:…')
+    // An empty style attribute is nothing on the screen: Preact writes one
+    // where the hand-written version simply never set the property.
+    .replace(/ style=""/g, '')
     .replace(/></g, '>\n<');
 }
 

@@ -67,10 +67,9 @@
       <div class="moods" id="moods"></div>
       <div class="rows" id="library-rows"></div>
 
-      <div class="empty" id="library-empty">
-        <p class="empty-title display display-sm">No stories yet</p>
-        <p>Tap <strong>Add</strong> to bring in audio you already own. Files are copied into this app and stay on this phone.</p>
-      </div>
+      <!-- Filled in by the script, which knows whether the library is empty or
+           has simply been hidden by a grown-up. -->
+      <div class="empty" id="library-empty" hidden></div>
     </section>
 
   </div>
@@ -290,7 +289,7 @@
 <script src="assets/js/importer.js"></script>
 <script src="assets/js/player.js"></script>
 <script src="assets/js/ui.js"></script>
-<script src="assets/js/lists.js"></script>
+<script src="assets/js/views.js"></script>
 <script src="assets/js/app.js"></script>
 </body>
 </html>
