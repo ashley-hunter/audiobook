@@ -11,6 +11,28 @@
  */
 'use strict';
 
+/* `self` in here is a ServiceWorkerGlobalScope, but the worker type library
+ * describes it as the plainer WorkerGlobalScope shared with ordinary workers -
+ * no skipWaiting, no clients, no fetch event. `self` cannot be re-declared, so
+ * this names the same object properly, once, rather than casting at each use.
+ */
+var worker = self as unknown as ServiceWorkerGlobalScope;
+
+/* What the worker needs from a story row. The page's fuller `Story` type lives
+ * in src/types.d.ts, which is written against the DOM rather than a worker, so
+ * the worker describes the few fields it actually reads.
+ */
+interface StoredStory {
+  id: string;
+  size: number;
+  mime?: string;
+  chunkCount: number;
+}
+
+interface StoredChunk {
+  data: ArrayBuffer;
+}
+
 /* Stamped by scripts/build-site.js with a hash of everything that ships, so
  * each deploy produces a different service worker. Without that the browser
  * sees identical bytes, never installs a new worker, never runs activate, and
@@ -52,7 +74,7 @@ var SHELL = [
   'assets/icons/icon-512.png'
 ];
 
-self.addEventListener('install', function (event) {
+worker.addEventListener('install', function (event: ExtendableEvent) {
   /* addAll is all or nothing, and that is the point. Swallowing a failed entry
    * would let a half cached shell install and take over, and activate would
    * then delete the previous complete cache - leaving the app broken offline
@@ -63,28 +85,28 @@ self.addEventListener('install', function (event) {
   event.waitUntil(
     caches.open(VERSION)
       .then(function (cache) { return cache.addAll(SHELL); })
-      .then(function () { return self.skipWaiting(); })
+      .then(function () { return worker.skipWaiting(); })
   );
 });
 
-self.addEventListener('activate', function (event) {
+worker.addEventListener('activate', function (event: ExtendableEvent) {
   event.waitUntil(
     caches.keys().then(function (keys) {
       return Promise.all(keys.map(function (key) {
         return key === VERSION ? null : caches['delete'](key);
       }));
-    }).then(function () { return self.clients.claim(); })
+    }).then(function () { return worker.clients.claim(); })
   );
 });
 
-self.addEventListener('fetch', function (event) {
+worker.addEventListener('fetch', function (event: FetchEvent) {
   var request = event.request;
   if (request.method !== 'GET') return;
 
   var url = new URL(request.url);
-  if (url.origin !== self.location.origin) return;
+  if (url.origin !== worker.location.origin) return;
 
-  var scope = new URL('./', self.location.href).pathname;
+  var scope = new URL('./', worker.location.href).pathname;
   var path = url.pathname.indexOf(scope) === 0 ? url.pathname.slice(scope.length) : url.pathname;
 
   if (path.indexOf(MEDIA_PREFIX) === 0) {
@@ -159,14 +181,17 @@ function serveMedia(storyId, request) {
       });
     }
 
-    var end = Math.min(range.end, range.start + MAX_WINDOW - 1, total - 1);
-    return readBytes(story, range.start, end).then(function (bytes) {
+    // Held in locals: inside the callback below the compiler can no longer see
+    // that the `if (!range)` above ruled out null.
+    var start = range.start;
+    var end = Math.min(range.end, start + MAX_WINDOW - 1, total - 1);
+    return readBytes(story, start, end).then(function (bytes) {
       return new Response(bytes, {
         status: 206,
         headers: {
           'Content-Type': mime,
           'Content-Length': String(bytes.byteLength),
-          'Content-Range': 'bytes ' + range.start + '-' + end + '/' + total,
+          'Content-Range': 'bytes ' + start + '-' + end + '/' + total,
           'Accept-Ranges': 'bytes',
           'Cache-Control': 'no-store'
         }
@@ -284,11 +309,11 @@ function readBytes(story, start, end) {
 
 /* -------------------------------------------------------- IndexedDB (worker) */
 
-var dbPromise = null;
+var dbPromise: Promise<IDBDatabase> | null = null;
 
 function openDb() {
   if (dbPromise) return dbPromise;
-  dbPromise = new Promise(function (resolve, reject) {
+  dbPromise = new Promise<IDBDatabase>(function (resolve, reject) {
     var request = indexedDB.open('bedtime', 1);
     request.onsuccess = function () { resolve(request.result); };
     request.onerror = function () { reject(request.error); };
@@ -299,9 +324,9 @@ function openDb() {
   return dbPromise;
 }
 
-function get(storeName, key) {
+function get<T>(storeName: string, key: string): Promise<T | undefined> {
   return openDb().then(function (db) {
-    return new Promise(function (resolve, reject) {
+    return new Promise<T | undefined>(function (resolve, reject) {
       var tx = db.transaction(storeName, 'readonly');
       var request = tx.objectStore(storeName).get(key);
       request.onsuccess = function () { resolve(request.result); };
@@ -310,14 +335,14 @@ function get(storeName, key) {
   });
 }
 
-function getStory(id) {
-  return get('stories', id);
+function getStory(id: string): Promise<StoredStory | undefined> {
+  return get<StoredStory>('stories', id);
 }
 
-function getChunk(storyId, index) {
+function getChunk(storyId: string, index: number): Promise<ArrayBuffer | null> {
   var n = String(index);
   while (n.length < 6) n = '0' + n;
-  return get('chunks', storyId + '#' + n).then(function (row) {
+  return get<StoredChunk>('chunks', storyId + '#' + n).then(function (row) {
     return row ? row.data : null;
   });
 }

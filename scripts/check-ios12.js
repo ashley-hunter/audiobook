@@ -25,12 +25,20 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 
-// Only the files that actually reach the phone are checked. Build scripts,
-// tests and the vendored design prototypes run elsewhere and are exempt.
-const SHIPPED = ['assets', 'sw.js'];
+/* The source of everything that reaches the phone. It is the source rather
+ * than the compiled output because the `// caps-ok` markers that justify a
+ * guarded call live here - TypeScript drops an end-of-line comment on its way
+ * out, which would turn every marked line into a failure. What is published is
+ * checked too, by the parse at the floor's language level in build-site.js,
+ * which runs after Babel and is about syntax rather than intent.
+ *
+ * Build scripts, tests and the vendored design prototypes run elsewhere and
+ * are exempt.
+ */
+const SHIPPED = ['src', 'assets/css', 'assets/vendor'];
 
 // Where post-floor APIs are allowed to be named.
-const CAPABILITY_FILES = [path.join('assets', 'js', 'capabilities.js')];
+const CAPABILITY_FILES = [path.join('src', 'capabilities.ts')];
 
 // An inline escape hatch for a guarded one-off outside the capability module.
 const INLINE_ALLOW = '// caps-ok';
@@ -131,7 +139,7 @@ for (const file of collect()) {
   const rel = path.relative(ROOT, file);
   const raw = fs.readFileSync(file, 'utf8');
 
-  if (file.endsWith('.js')) {
+  if (file.endsWith('.js') || file.endsWith('.ts')) {
     const isCapabilityModule = CAPABILITY_FILES.indexOf(rel) >= 0;
     const rawLines = raw.split('\n');
     const lines = blankComments(raw, true).split('\n');
@@ -168,7 +176,7 @@ for (const file of collect()) {
 const acorn = require('acorn');
 
 for (const file of collect()) {
-  if (!file.endsWith('.js')) continue;
+  if (!file.endsWith('.js')) continue;      // TypeScript is not ES2018 by definition
   const rel = path.relative(ROOT, file);
   const source = fs.readFileSync(file, 'utf8');
   for (const sourceType of ['script', 'module']) {

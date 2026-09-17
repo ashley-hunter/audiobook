@@ -1,3 +1,7 @@
 node_modules/
 _site/
 .DS_Store
+
+# Compiled from src/ by `npm run compile`.
+assets/js/*.js
+/sw.js

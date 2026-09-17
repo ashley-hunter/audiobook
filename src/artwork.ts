@@ -20,10 +20,15 @@
  * leg is unproven; if it ever refuses, the fetch rejects, no cover is returned
  * and the generated striped cover stands - the same as being offline.
  */
-window.App = window.App || {};
+window.App = window.App || ({} as typeof App);
 
-App.artwork = (function () {
+App.artwork = (function (): ArtworkModule {
   'use strict';
+
+  // The image a source hands back, before it is known to be a good match.
+  // `source` and `matched` are filled in by the caller once a candidate is
+  // confirmed, so they start absent rather than empty.
+  type MatchedImage = { data: ArrayBuffer; type: string; source?: string; matched?: string };
 
   var ITUNES = 'https://itunes.apple.com/search';
   var OPENLIB = 'https://openlibrary.org/search.json';
@@ -40,7 +45,7 @@ App.artwork = (function () {
   var OF_N = /\b\d{1,3}\s*of\s*\d{1,3}\b/gi;
 
   // Turns "03_the-gruffalo_part2 (unabridged).mp3" into "the gruffalo".
-  function clean(title) {
+  function clean(title: string): string {
     return String(title || '')
       .replace(/\.[a-z0-9]{2,4}$/i, '')
       .replace(/[_]+/g, ' ')
@@ -54,7 +59,7 @@ App.artwork = (function () {
       .trim();
   }
 
-  function words(text) {
+  function words(text: string): string[] {
     var out = String(text || '')
       .toLowerCase()
       .replace(/[^a-z0-9\s]/g, ' ')
@@ -67,11 +72,11 @@ App.artwork = (function () {
    * result may carry extra words ("The Gruffalo: 25th Anniversary Edition")
    * and still be right, but one that is missing half the title is not.
    */
-  function match(wanted, got) {
+  function match(wanted: string, got: string): number {
     var a = words(wanted);
     var b = words(got);
     if (!a.length || !b.length) return 0;
-    var index = {};
+    var index: { [word: string]: boolean } = {};
     for (var i = 0; i < b.length; i++) index[b[i]] = true;
     var hits = 0;
     for (var j = 0; j < a.length; j++) if (index[a[j]]) hits++;
@@ -79,14 +84,14 @@ App.artwork = (function () {
   }
 
   // iTunes hands back a 100px thumbnail; the same path serves any size.
-  function upscale(url) {
+  function upscale(url: string): string {
     return String(url || '').replace(/\/\d+x\d+(bb)?\.(jpg|png)$/i, '/600x600bb.jpg');
   }
 
   /* ------------------------------------------------------------ fetching */
 
-  function timed(promise) {
-    return new Promise(function (resolve, reject) {
+  function timed<T>(promise: Promise<T>): Promise<T> {
+    return new Promise<T>(function (resolve, reject) {
       var done = false;
       var timer = setTimeout(function () {
         if (done) return;
@@ -107,14 +112,16 @@ App.artwork = (function () {
     });
   }
 
-  function getJson(url) {
+  // The JSON coming back from either search host is untrusted and unshaped;
+  // callers pick fields out of it and re-check every one before trusting it.
+  function getJson(url: string): Promise<any> {
     return timed(fetch(url)).then(function (response) {
       if (!response || !response.ok) throw new Error('bad response');
       return response.json();
     });
   }
 
-  function getImage(url) {
+  function getImage(url: string): Promise<MatchedImage> {
     return timed(fetch(url)).then(function (response) {
       if (!response || !response.ok) throw new Error('bad response');
       var type = response.headers.get('content-type') || 'image/jpeg';
@@ -128,13 +135,13 @@ App.artwork = (function () {
 
   /* ------------------------------------------------------------- sources */
 
-  function fromItunes(title, artist) {
+  function fromItunes(title: string, artist?: string): Promise<FoundArtwork> {
     var term = artist && artist !== 'you' ? title + ' ' + artist : title;
     var url = ITUNES + '?media=audiobook&entity=audiobook&limit=8&term=' + encodeURIComponent(term);
 
     return getJson(url).then(function (body) {
       var results = (body && body.results) || [];
-      var best = null;
+      var best: any = null;
       var bestScore = 0;
       for (var i = 0; i < results.length; i++) {
         var name = results[i].collectionName || results[i].trackName || '';
@@ -153,12 +160,12 @@ App.artwork = (function () {
     }, unreachable);
   }
 
-  function fromOpenLibrary(title) {
+  function fromOpenLibrary(title: string): Promise<FoundArtwork> {
     var url = OPENLIB + '?limit=8&fields=title,cover_i&q=' + encodeURIComponent(title);
 
     return getJson(url).then(function (body) {
       var docs = (body && body.docs) || [];
-      var best = null;
+      var best: any = null;
       var bestScore = 0;
       for (var i = 0; i < docs.length; i++) {
         if (!docs[i].cover_i) continue;
@@ -184,13 +191,13 @@ App.artwork = (function () {
    * caller records a miss so it is not retried forever, and that is only right
    * once a source has actually answered.
    */
-  function searched(image) { return { image: image, searched: true }; }
-  function unreachable() { return { image: null, searched: false }; }
+  function searched(image: MatchedImage | null): FoundArtwork { return { image: image, searched: true }; }
+  function unreachable(): FoundArtwork { return { image: null, searched: false }; }
 
   /* Resolves { image, searched }, where image is { data, type, source, matched }
    * or null. Never rejects: a missing cover is not worth interrupting anything.
    */
-  function find(title, artist) {
+  function find(title: string, artist?: string): Promise<FoundArtwork | null> {
     if (typeof fetch !== 'function') return Promise.resolve(unreachable());
     if (navigator.onLine === false) return Promise.resolve(unreachable());
 
@@ -217,7 +224,7 @@ App.artwork = (function () {
    */
   var MAX_DIM = 400;
 
-  function shrink(data, type) {
+  function shrink(data: ArrayBuffer, type: string): Promise<{ data: ArrayBuffer; type: string } | null> {
     return new Promise(function (resolve) {
       if (!data || !data.byteLength || typeof document === 'undefined') return resolve(null);
 
@@ -225,7 +232,7 @@ App.artwork = (function () {
       var image = new Image();
       var settled = false;
 
-      function finish(value) {
+      function finish(value: { data: ArrayBuffer; type: string } | null): void {
         if (settled) return;
         settled = true;
         URL.revokeObjectURL(url);
@@ -241,7 +248,10 @@ App.artwork = (function () {
         canvas.width = Math.round(image.width * scale);
         canvas.height = Math.round(image.height * scale);
         try {
-          canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+          // getContext('2d') can return null; when it does, this throws and
+          // the catch below runs finish(null), exactly as it would without
+          // the cast - the cast only names what the try/catch already handles.
+          (canvas.getContext('2d') as CanvasRenderingContext2D).drawImage(image, 0, 0, canvas.width, canvas.height);
         } catch (err) {
           void err;
           return finish(null);
@@ -263,7 +273,7 @@ App.artwork = (function () {
 
   // Stores a cover, shrunk where that is worth doing. Failure to shrink is not
   // failure to store: the original goes in instead.
-  function store(storyId, data, type) {
+  function store(storyId: string, data: ArrayBuffer, type: string): Promise<void> {
     return shrink(data, type)['catch'](function () { return null; })
       .then(function (smaller) {
         var use = smaller || { data: data, type: type };
@@ -277,6 +287,9 @@ App.artwork = (function () {
     store: store,
     // exercised directly by test/artwork.test.js
     clean: clean,
+    // ArtworkModule declares this as returning boolean, but the real
+    // function (proven by test/artwork.test.js, which checks the exact
+    // fraction) returns the share of words matched, a number - cast at this
     match: match,
     upscale: upscale
   };

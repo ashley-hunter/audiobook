@@ -5,8 +5,8 @@
   "description": "A bedtime audiobook player that runs as a Home Screen web app and keeps stories on the phone.",
   "scripts": {
     "serve": "node test/serve.js",
-    "build": "node scripts/build-site.js",
-    "check": "node scripts/check-ios12.js",
+    "build": "npm run compile && node scripts/build-site.js",
+    "check": "npm run compile && node scripts/check-ios12.js",
     "test:tags": "node test/tags.test.js",
     "test:browser": "node test/browser.test.js",
     "test:pages": "node test/pages.test.js",
@@ -14,12 +14,14 @@
     "icons": "python3 scripts/make-icons.py",
     "test:artwork": "node test/artwork.test.js",
     "parity": "bash scripts/parity.sh",
-    "test:safari": "npm run build && node test/safari.test.js"
+    "test:safari": "npm run build && node test/safari.test.js",
+    "compile": "tsc -p tsconfig.json && tsc -p tsconfig.sw.json"
   },
   "devDependencies": {
     "@babel/core": "^8.0.5",
     "@babel/preset-env": "^8.0.5",
     "acorn": "^8.18.0",
-    "playwright": "^1.49.0"
+    "playwright": "^1.49.0",
+    "typescript": "^7.0.2"
   }
 }

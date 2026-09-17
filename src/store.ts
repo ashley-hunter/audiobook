@@ -10,25 +10,25 @@
  *     via a non-IDB promise, so every helper opens its own short transaction
  *     instead of holding one open across awaits.
  */
-window.App = window.App || {};
+window.App = window.App || ({} as typeof App);
 
-App.store = (function () {
+App.store = (function (): StoreModule {
   'use strict';
 
   var DB_NAME = 'bedtime';
   var DB_VERSION = 1;
   var CHUNK_SIZE = 1024 * 1024; // 1 MiB - small enough to never strain a 1 GB phone
 
-  var dbPromise = null;
+  var dbPromise: Promise<IDBDatabase> | null = null;
 
-  function open() {
+  function open(): Promise<IDBDatabase> {
     if (dbPromise) return dbPromise;
-    dbPromise = new Promise(function (resolve, reject) {
+    dbPromise = new Promise<IDBDatabase>(function (resolve, reject) {
       if (!window.indexedDB) {
         reject(new Error('This browser has no IndexedDB, so stories cannot be saved.'));
         return;
       }
-      var req;
+      var req: IDBOpenDBRequest;
       try {
         req = indexedDB.open(DB_NAME, DB_VERSION);
       } catch (err) {
@@ -58,16 +58,26 @@ App.store = (function () {
     return dbPromise;
   }
 
-  function tx(storeName, mode, run) {
+  function tx<T>(
+    storeName: string,
+    mode: IDBTransactionMode,
+    run: (store: IDBObjectStore, set: (value: T) => void) => void
+  ): Promise<T> {
     return open().then(function (db) {
-      return new Promise(function (resolve, reject) {
+      return new Promise<T>(function (resolve, reject) {
         var t = db.transaction(storeName, mode);
-        var out;
+        // Definitely assigned before `oncomplete` fires: `set` below is called
+        // either synchronously inside `run` or from a request's `onsuccess`,
+        // and either way that happens before the transaction can complete.
+        var out!: T;
         t.oncomplete = function () { resolve(out); };
         t.onerror = function () { reject(t.error); };
         t.onabort = function () { reject(t.error || new Error('Transaction aborted')); };
         try {
-          out = run(t.objectStore(storeName), function (value) { out = value; });
+          // `run` never actually returns a value - every caller reports
+          // through `set` instead - so this assignment is always a no-op;
+          // the cast just keeps that no-op typed rather than reaching for `any`.
+          out = run(t.objectStore(storeName), function (value) { out = value; }) as unknown as T;
         } catch (err) {
           try { t.abort(); } catch (ignored) { void ignored; }
           reject(err);
@@ -76,11 +86,11 @@ App.store = (function () {
     });
   }
 
-  function reqValue(request, set) {
+  function reqValue<T>(request: IDBRequest<T>, set: (value: T) => void): void {
     request.onsuccess = function () { set(request.result); };
   }
 
-  function chunkKey(storyId, index) {
+  function chunkKey(storyId: string, index: number): string {
     // Zero padded so a key range walks the chunks in playback order.
     var n = String(index);
     while (n.length < 6) n = '0' + n;
@@ -89,58 +99,62 @@ App.store = (function () {
 
   /* ---------------------------------------------------------------- stories */
 
-  function getStories() {
-    return tx('stories', 'readonly', function (store, set) {
+  function getStories(): Promise<Story[]> {
+    return tx<Story[]>('stories', 'readonly', function (store, set) {
       if (store.getAll) {
         reqValue(store.getAll(), set);
         return;
       }
-      var out = [];
+      var out: Story[] = [];
       store.openCursor().onsuccess = function (event) {
-        var cursor = event.target.result;
+        // Cast because `event.target` is typed as a plain EventTarget: at
+        // runtime it is always the request whose `onsuccess` this is.
+        var cursor = (event.target as IDBRequest<IDBCursorWithValue | null>).result;
         if (cursor) { out.push(cursor.value); cursor['continue'](); } else { set(out); }
       };
     }).then(function (list) { return list || []; });
   }
 
-  function getStory(id) {
-    return tx('stories', 'readonly', function (store, set) { reqValue(store.get(id), set); });
+  function getStory(id: string): Promise<Story | undefined> {
+    return tx<Story | undefined>('stories', 'readonly', function (store, set) { reqValue(store.get(id), set); });
   }
 
-  function putStory(story) {
-    return tx('stories', 'readwrite', function (store) { store.put(story); }).then(function () { return story; });
+  function putStory(story: Story): Promise<Story> {
+    return tx<void>('stories', 'readwrite', function (store) { store.put(story); }).then(function () { return story; });
   }
 
-  function patchStory(id, patch) {
-    return tx('stories', 'readwrite', function (store, set) {
+  function patchStory(id: string, patch: Partial<Story>): Promise<Story | null> {
+    return tx<Story | null>('stories', 'readwrite', function (store, set) {
       store.get(id).onsuccess = function (event) {
-        var story = event.target.result;
+        var story = (event.target as IDBRequest<Story | undefined>).result;
         if (!story) { set(null); return; }
-        for (var k in patch) if (Object.prototype.hasOwnProperty.call(patch, k)) story[k] = patch[k];
+        // `k` is a plain string from `for...in`, not a `keyof Story`; the cast
+        // preserves the original dynamic-key copy the types can't express.
+        for (var k in patch) if (Object.prototype.hasOwnProperty.call(patch, k)) (story as any)[k] = (patch as any)[k];
         store.put(story);
         set(story);
       };
     });
   }
 
-  function deleteStory(id) {
+  function deleteStory(id: string): Promise<void> {
     return deleteChunks(id)
-      .then(function () { return tx('art', 'readwrite', function (store) { store['delete'](id); }); })
-      .then(function () { return tx('stories', 'readwrite', function (store) { store['delete'](id); }); });
+      .then(function () { return tx<void>('art', 'readwrite', function (store) { store['delete'](id); }); })
+      .then(function () { return tx<void>('stories', 'readwrite', function (store) { store['delete'](id); }); });
   }
 
   /* ----------------------------------------------------------------- chunks */
 
-  function putChunk(storyId, index, buffer) {
-    return tx('chunks', 'readwrite', function (store) {
+  function putChunk(storyId: string, index: number, buffer: ArrayBuffer): Promise<void> {
+    return tx<void>('chunks', 'readwrite', function (store) {
       store.put({ key: chunkKey(storyId, index), data: buffer });
     });
   }
 
-  function getChunk(storyId, index) {
-    return tx('chunks', 'readonly', function (store, set) {
+  function getChunk(storyId: string, index: number): Promise<ArrayBuffer | null> {
+    return tx<ArrayBuffer | null>('chunks', 'readonly', function (store, set) {
       store.get(chunkKey(storyId, index)).onsuccess = function (event) {
-        var row = event.target.result;
+        var row = (event.target as IDBRequest<{ key: string; data: ArrayBuffer } | undefined>).result;
         set(row ? row.data : null);
       };
     });
@@ -150,21 +164,21 @@ App.store = (function () {
    * audit asks this of every story, and getChunk would hand back a megabyte
    * each time only for it to be thrown away.
    */
-  function hasChunk(storyId, index) {
-    return tx('chunks', 'readonly', function (store, set) {
+  function hasChunk(storyId: string, index: number): Promise<boolean> {
+    return tx<boolean>('chunks', 'readonly', function (store, set) {
       store.count(chunkKey(storyId, index)).onsuccess = function (event) {
-        set(event.target.result > 0);
+        set((event.target as IDBRequest<number>).result > 0);
       };
     });
   }
 
   // Reads chunks [from, to] inclusive in one transaction.
-  function getChunks(storyId, from, to) {
-    return tx('chunks', 'readonly', function (store, set) {
-      var out = [];
+  function getChunks(storyId: string, from: number, to: number): Promise<ArrayBuffer[]> {
+    return tx<ArrayBuffer[]>('chunks', 'readonly', function (store, set) {
+      var out: ArrayBuffer[] = [];
       var range = IDBKeyRange.bound(chunkKey(storyId, from), chunkKey(storyId, to));
       store.openCursor(range).onsuccess = function (event) {
-        var cursor = event.target.result;
+        var cursor = (event.target as IDBRequest<IDBCursorWithValue | null>).result;
         if (cursor) { out.push(cursor.value.data); cursor['continue'](); } else { set(out); }
       };
     });
@@ -176,14 +190,18 @@ App.store = (function () {
    * way to reach them. Nothing else walks the store, so without this they sit
    * there taking up space for good.
    */
-  function chunkOwners() {
-    return tx('chunks', 'readonly', function (store, set) {
-      var ids = {};
-      var request = store.openKeyCursor ? store.openKeyCursor() : store.openCursor();
+  function chunkOwners(): Promise<string[]> {
+    return tx<string[]>('chunks', 'readonly', function (store, set) {
+      var ids: Record<string, boolean> = {};
+      // Cast: IDBRequest<A> | IDBRequest<B> doesn't collapse to
+      // IDBRequest<A | B>, even though both branches are read the same way
+      // below (.result.key, .result.continue()).
+      var request = (store.openKeyCursor ? store.openKeyCursor() : store.openCursor()) as
+        IDBRequest<IDBCursor | IDBCursorWithValue | null>;
       request.onsuccess = function (event) {
-        var cursor = event.target.result;
+        var cursor = (event.target as IDBRequest<IDBCursor | IDBCursorWithValue | null>).result;
         if (!cursor) {
-          var out = [];
+          var out: string[] = [];
           for (var id in ids) if (Object.prototype.hasOwnProperty.call(ids, id)) out.push(id);
           set(out);
           return;
@@ -196,8 +214,8 @@ App.store = (function () {
     }).then(function (list) { return list || []; });
   }
 
-  function deleteChunks(storyId) {
-    return tx('chunks', 'readwrite', function (store) {
+  function deleteChunks(storyId: string): Promise<void> {
+    return tx<void>('chunks', 'readwrite', function (store) {
       var range = IDBKeyRange.bound(storyId + '#', storyId + '#￿');
       store['delete'](range);
     });
@@ -205,32 +223,32 @@ App.store = (function () {
 
   /* -------------------------------------------------------------------- art */
 
-  function putArt(id, buffer, type) {
-    return tx('art', 'readwrite', function (store) { store.put({ id: id, data: buffer, type: type }); });
+  function putArt(id: string, buffer: ArrayBuffer, type: string): Promise<void> {
+    return tx<void>('art', 'readwrite', function (store) { store.put({ id: id, data: buffer, type: type }); });
   }
 
-  function getArt(id) {
-    return tx('art', 'readonly', function (store, set) { reqValue(store.get(id), set); });
+  function getArt(id: string): Promise<ArtRow | null> {
+    return tx<ArtRow | null>('art', 'readonly', function (store, set) { reqValue(store.get(id), set); });
   }
 
   /* --------------------------------------------------------------- settings */
 
-  function kvGet(key, fallback) {
-    return tx('kv', 'readonly', function (store, set) {
+  function kvGet<T>(key: string, fallback: T): Promise<T> {
+    return tx<T>('kv', 'readonly', function (store, set) {
       store.get(key).onsuccess = function (event) {
-        var row = event.target.result;
+        var row = (event.target as IDBRequest<{ k: string; v: T } | undefined>).result;
         set(row ? row.v : fallback);
       };
     });
   }
 
-  function kvSet(key, value) {
-    return tx('kv', 'readwrite', function (store) { store.put({ k: key, v: value }); });
+  function kvSet(key: string, value: any): Promise<void> {
+    return tx<void>('kv', 'readwrite', function (store) { store.put({ k: key, v: value }); });
   }
 
   /* ------------------------------------------------------------------ usage */
 
-  function usage() {
+  function usage(): Promise<number> {
     return getStories().then(function (list) {
       var bytes = 0;
       for (var i = 0; i < list.length; i++) bytes += list[i].size || 0;
@@ -238,6 +256,10 @@ App.store = (function () {
     });
   }
 
+  // Built up in a variable rather than returned as a literal: `getStory` and
+  // `usage` are real, used elsewhere (tests, the startup audit) but aren't
+  // part of the shared StoreModule shape, and a literal return would fail
+  // TypeScript's excess-property check for them.
   return {
     CHUNK_SIZE: CHUNK_SIZE,
     open: open,

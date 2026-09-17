@@ -1,0 +1,23 @@
+{
+  /* Bedtime - TypeScript for the service worker.
+   *
+   * Its own config because it is not a page script: it runs in a worker, with
+   * a different global object and a different set of types, and it is emitted
+   * to the site root rather than assets/js because that is where its scope
+   * has to be to serve the whole app.
+   */
+  "compilerOptions": {
+    "target": "ES2018",
+    "lib": ["ES2018", "WebWorker"],
+    "module": "es2022",
+    "moduleDetection": "legacy",
+    "rootDir": "src",
+    "outDir": ".",
+    "strict": true,
+    "noImplicitAny": false,
+    "removeComments": false,
+    "newLine": "lf",
+    "skipLibCheck": true
+  },
+  "files": ["src/sw.ts"]
+}

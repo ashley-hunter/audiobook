@@ -1,30 +1,36 @@
-/* Bedtime - small DOM and formatting helpers shared by app.js. */
-window.App = window.App || {};
+/* Bedtime - small DOM and formatting helpers shared by app.ts. */
+window.App = window.App || ({} as typeof App);
 
-App.ui = (function () {
+App.ui = (function (): UiModule {
   'use strict';
 
-  function $(id) { return document.getElementById(id); }
+  /* Every id this asks for is in index.html, and the build refuses to publish
+   * a page whose scripts and markup disagree, so a missing one is a bug to
+   * crash on rather than a case to handle at each of two hundred call sites.
+   */
+  function $(id: string): HTMLElement {
+    return document.getElementById(id) as HTMLElement;
+  }
 
-  function el(tag, className, text) {
+  function el(tag: string, className?: string | null, text?: string | null): HTMLElement {
     var node = document.createElement(tag);
     if (className) node.className = className;
     if (text !== undefined && text !== null) node.textContent = text;
     return node;
   }
 
-  function clear(node) {
+  function clear(node: Node): void {
     while (node.firstChild) node.removeChild(node.firstChild);
   }
 
-  function show(node, visible) {
+  function show(node: HTMLElement | null, visible: boolean): void {
     if (node) node.hidden = !visible;
   }
 
-  function toggleClass(node, className, on) {
+  function toggleClass(node: Element | null, className: string, on: boolean): void {
     if (!node) return;
     var classes = node.className.split(/\s+/);
-    var out = [];
+    var out: string[] = [];
     for (var i = 0; i < classes.length; i++) {
       if (classes[i] && classes[i] !== className) out.push(classes[i]);
     }
@@ -32,13 +38,13 @@ App.ui = (function () {
     node.className = out.join(' ');
   }
 
-  function text(node, value) {
+  function text(node: HTMLElement | null, value: string): void {
     if (node && node.textContent !== value) node.textContent = value;
   }
 
   /* ------------------------------------------------------------ formatting */
 
-  function clock(seconds) {
+  function clock(seconds: number): string {
     var total = Math.max(0, Math.floor(seconds || 0));
     var s = total % 60;
     var m = Math.floor(total / 60) % 60;
@@ -51,7 +57,7 @@ App.ui = (function () {
     return m + ':' + ss;
   }
 
-  function minutes(seconds) {
+  function minutes(seconds: number): string {
     if (!seconds) return 'Unknown length';
     var mins = Math.round(seconds / 60);
     if (mins < 60) return mins + ' min';
@@ -60,7 +66,7 @@ App.ui = (function () {
     return rest ? h + ' h ' + rest + ' m' : h + ' h';
   }
 
-  function bytes(size) {
+  function bytes(size: number): string {
     if (!size) return '0 MB';
     if (size < 1024 * 1024) return Math.max(1, Math.round(size / 1024)) + ' KB';
     var mb = size / (1024 * 1024);
@@ -83,7 +89,7 @@ App.ui = (function () {
   ];
   var COVER_LIGHT = ['#DCD8EE', '#D3CEE9'];
 
-  function stripes(seed, light) {
+  function stripes(seed: number, light?: boolean): string {
     var pair = light ? COVER_LIGHT : COVERS[Math.abs(seed || 0) % COVERS.length];
     var step = light ? 6 : 7;
     return 'repeating-linear-gradient(135deg, ' + pair[0] + ' 0px, ' + pair[0] + ' ' + step + 'px, ' +
@@ -92,7 +98,7 @@ App.ui = (function () {
 
   // Paints a cover onto a node: the real artwork when there is one, stripes
   // otherwise. Returns immediately and fills the art in when it loads.
-  function paintCover(node, story, light) {
+  function paintCover(node: HTMLElement | null, story: Story, light?: boolean): void {
     if (!node) return;
     node.style.backgroundImage = stripes(story.hue || 0, light);
     if (!story.hasArt) return;
@@ -103,9 +109,9 @@ App.ui = (function () {
 
   /* ----------------------------------------------------------------- toast */
 
-  var toastTimer = null;
+  var toastTimer: ReturnType<typeof setTimeout> | undefined;
 
-  function toast(message) {
+  function toast(message: string): void {
     var node = $('toast');
     if (!node) return;
     node.textContent = message;
@@ -117,15 +123,20 @@ App.ui = (function () {
   /* ----------------------------------------------------------------- rings */
 
   // Sets an SVG progress ring from a 0..1 fraction.
-  function ring(node, fraction) {
+  function ring(node: Element | null, fraction: number): void {
+    // An SVG element: it has a style, whatever the base Element type says.
     if (!node) return;
     // The radius never changes; reading and parsing it again on every frame of
     // a three second hold is pure waste.
-    if (!node.__circumference) node.__circumference = parseFloat(node.getAttribute('r')) * 2 * Math.PI;
-    var circumference = node.__circumference;
+    var cached = node as Element & { __circumference?: number };
+    if (!cached.__circumference) {
+      cached.__circumference = parseFloat(node.getAttribute('r') || '0') * 2 * Math.PI;
+    }
+    var circumference = cached.__circumference;
     var clamped = Math.max(0, Math.min(1, fraction || 0));
-    node.style.strokeDasharray = circumference.toFixed(2);
-    node.style.strokeDashoffset = (circumference * (1 - clamped)).toFixed(2);
+    var svg = node as SVGElement;
+    svg.style.strokeDasharray = circumference.toFixed(2);
+    svg.style.strokeDashoffset = (circumference * (1 - clamped)).toFixed(2);
   }
 
   return {

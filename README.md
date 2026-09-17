@@ -366,18 +366,22 @@ Places where the prototype could not be followed literally, and why:
 ```
 index.html                  every screen's markup, rendered once
 manifest.webmanifest        used by Android; iOS reads the apple-* meta tags
-sw.js                       shell cache + the ./media/<id> range route
 assets/css/app.css          one stylesheet, tokens at the top
-assets/js/capabilities.js   every post-floor API, detected with its fallback
-assets/js/store.js          IndexedDB: stories, chunks, art, settings
-assets/js/settings.js       parent settings + the weekly listening record
-assets/js/id3.js            ID3v2 and MP4 tag reading
-assets/js/artwork.js        cover lookup: iTunes Search, then Open Library
-assets/js/media.js          picks the playback route, caches object URLs
-assets/js/importer.js       chunked copy into storage
-assets/js/player.js         playback, sleep timer, fade, checkpoints
-assets/js/ui.js             DOM and formatting helpers
-assets/js/app.js            screen wiring
+assets/vendor/              preact and htm, vendored as plain scripts
+src/types.d.ts              the shapes the modules pass between each other
+src/capabilities.ts         every post-floor API, detected with its fallback
+src/store.ts                IndexedDB: stories, chunks, art, settings
+src/settings.ts             parent settings + the weekly listening record
+src/id3.ts                  ID3v2 and MP4 tag reading
+src/artwork.ts              cover lookup: iTunes Search, then Open Library
+src/media.ts                picks the playback route, caches object URLs
+src/importer.ts             chunked copy into storage
+src/player.ts               playback, sleep timer, fade, checkpoints
+src/ui.ts                   DOM and formatting helpers
+src/views.ts                every list on screen, drawn with Preact
+src/app.ts                  screen wiring
+src/sw.ts                   shell cache + the ./media/<id> range route
+tsconfig.json               ES2018 out, strict; sw has its own, for worker types
 scripts/check-ios12.js      the Safari 12 guard
 scripts/build-site.js       assembles _site/, and refuses an inconsistent one
 scripts/make-icons.py       regenerates the icon set (stdlib only)

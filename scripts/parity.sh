@@ -24,6 +24,12 @@ git -C "$root" worktree add --quiet --detach "$work" "$ref"
 ln -sfn "$root/node_modules" "$work/node_modules"
 cp "$root/test/parity.js" "$work/test/parity.js"
 
+# The scripts the page loads are compiled from src/ and not committed, so a
+# checkout of an older ref has to be built before it can be compared against.
+if [ -f "$work/tsconfig.json" ]; then
+  (cd "$work" && npx tsc -p tsconfig.json)
+fi
+
 echo "Before ($ref):"
 node "$work/test/parity.js" "$out/before.txt" "$work" | sed 's/^/  /'
 echo "After (working tree):"

@@ -5,7 +5,7 @@
  * player is updated field by field so the once-a-second tick never rebuilds
  * nodes or restarts the starfield animation.
  */
-window.App = window.App || {};
+window.App = window.App || ({} as typeof App);
 
 (function () {
   'use strict';
@@ -17,22 +17,22 @@ window.App = window.App || {};
   var SKIP_SECONDS = 15;    // the player's back and forward buttons
   var UPDATE_CHECK_MS = 15 * 60 * 1000;   // how often a foregrounded app looks for a new release
 
-  var stories = [];
+  var stories: Story[] = [];
   var mood = 'All';
-  var currentId = null;
-  var importRows = {};
-  var importOrder = [];
-  var holdTimer = null;
+  var currentId: string | null = null;
+  var importRows: Record<string, ImportRow> = {};
+  var importOrder: ImportRow[] = [];
+  var holdTimer: ReturnType<typeof setInterval> | null = null;
   var holdStart = 0;
-  var persistedState = null;   // null until the browser has been asked
-  var spaceEstimate = null;    // null on browsers that will not say
+  var persistedState: boolean | null = null;   // null until the browser has been asked
+  var spaceEstimate: { usage: number; quota: number } | null = null;    // null on browsers that will not say
   var importing = false;       // chunks are being written; do not reload
   var scrubbing = false;       // a finger is on the position slider
   var suppressClickUntil = 0;  // a pick was just dropped; its click is not a tap
 
   /* ==================================================================== boot */
 
-  function boot() {
+  function boot(): void {
     watchForInteraction();   // before the async work: a tap during boot counts
     // iOS ignores user-scalable=no, so a pinch would zoom the whole app.
     document.addEventListener('gesturestart', function (event) { event.preventDefault(); }, false);
@@ -64,7 +64,7 @@ window.App = window.App || {};
 
   // iOS kills a backgrounded Home Screen app without notice, so pending
   // settings and listening time are written out the moment it goes away.
-  function wireTeardown() {
+  function wireTeardown(): void {
     function flush() {
       App.settings.flush();
       App.stats.flush();
@@ -76,7 +76,7 @@ window.App = window.App || {};
     }, false);
   }
 
-  function registerServiceWorker() {
+  function registerServiceWorker(): void {
     if (!('serviceWorker' in navigator)) return;
 
     // updateViaCache is ignored before Safari 14, so update() is what actually
@@ -123,7 +123,7 @@ window.App = window.App || {};
 
   var updateWaiting = false;
 
-  function takeUpdate() {
+  function takeUpdate(): void {
     if (!updateWaiting) return;
     if (!safeToReload()) return;
     if (alreadyReloaded()) return;       // see below: this must survive a reload
@@ -143,7 +143,7 @@ window.App = window.App || {};
    * takes the file picker with it, so tapping the dropzone appears to do
    * nothing at all.
    */
-  function safeToReload() {
+  function safeToReload(): boolean {
     if (importing) return false;
     if (App.player.currentStory()) return false;   // not just "not playing": a
                                                    // paused story is still
@@ -159,16 +159,16 @@ window.App = window.App || {};
 
   var interacted = false;
 
-  function noteInteraction() { interacted = true; }
+  function noteInteraction(): void { interacted = true; }
 
-  function watchForInteraction() {
+  function watchForInteraction(): void {
     // Capture, so a handler that stops propagation cannot hide the tap.
     document.addEventListener('touchstart', noteInteraction, true);
     document.addEventListener('mousedown', noteInteraction, true);
     document.addEventListener('keydown', noteInteraction, true);
   }
 
-  function anythingOpen() {
+  function anythingOpen(): boolean {
     var ids = ['player', 'add', 'parent', 'sheet', 'confirm', 'menu'];
     for (var i = 0; i < ids.length; i++) {
       var node = $(ids[i]);
@@ -186,7 +186,7 @@ window.App = window.App || {};
    */
   var RELOAD_KEY = 'bedtime:swReloaded';
 
-  function alreadyReloaded() {
+  function alreadyReloaded(): boolean {
     try {
       return window.sessionStorage.getItem(RELOAD_KEY) === '1';
     } catch (err) {
@@ -195,7 +195,7 @@ window.App = window.App || {};
     }
   }
 
-  function markReloaded() {
+  function markReloaded(): void {
     try {
       window.sessionStorage.setItem(RELOAD_KEY, '1');
     } catch (err) { void err; }
@@ -206,7 +206,7 @@ window.App = window.App || {};
    * falls back to reporting the bytes it holds, plus the startup audit that
    * spots audio iOS has already reclaimed.
    */
-  function refreshStorageFacts() {
+  function refreshStorageFacts(): void {
     App.caps.requestPersistence().then(function (granted) {
       persistedState = granted;
       return App.caps.estimate();
@@ -218,7 +218,7 @@ window.App = window.App || {};
 
   // Chromium can install from a button, so show the row when it offers one.
   // Safari cannot, and is left alone rather than nagged about it.
-  function wireInstallRow() {
+  function wireInstallRow(): void {
     App.caps.onInstallAvailable(function (available) {
       ui.show($('install-row'), available);
     });
@@ -227,24 +227,24 @@ window.App = window.App || {};
   /* ================================================================== data */
 
   // Hearted stories first, then newest first.
-  function sortStories(list) {
+  function sortStories(list: Story[]): Story[] {
     return list.slice().sort(function (a, b) {
       return (b.fav ? 1 : 0) - (a.fav ? 1 : 0) || (b.addedAt || 0) - (a.addedAt || 0);
     });
   }
 
-  function byId(id) {
+  function byId(id: string | null): Story | null {
     for (var i = 0; i < stories.length; i++) if (stories[i].id === id) return stories[i];
     return null;
   }
 
   // Stories the child is allowed to see.
-  function visibleStories() {
+  function visibleStories(): Story[] {
     if (App.settings.get().showOurs) return stories;
     return stories.filter(function (s) { return s.mood !== 'Ours'; });
   }
 
-  function filteredStories() {
+  function filteredStories(): Story[] {
     var list = visibleStories();
     if (mood === 'All') return list;
     return list.filter(function (s) { return s.mood === mood; });
@@ -257,13 +257,14 @@ window.App = window.App || {};
    * once it has played to the end, so the queue is always what is still to
    * come. Each story runs on into the one after it.
    */
-  function lineup() {
+  function lineup(): Story[] {
     return visibleStories().filter(function (s) {
       return s.pickAt && !s.missing;
-    }).sort(function (a, b) { return a.pickAt - b.pickAt; });
+    // The filter just above guarantees pickAt is set on everything being sorted.
+    }).sort(function (a, b) { return (a.pickAt as number) - (b.pickAt as number); });
   }
 
-  function queuedAfter(id) {
+  function queuedAfter(id: string): number {
     var chosen = lineup();
     for (var i = 0; i < chosen.length; i++) {
       if (chosen[i].id === id) return chosen.length - i - 1;
@@ -271,12 +272,12 @@ window.App = window.App || {};
     return 0;
   }
 
-  function inQueue(id) {
+  function inQueue(id: string | null): boolean {
     var story = byId(id);
     return !!(story && story.pickAt);
   }
 
-  function nextAfter(id) {
+  function nextAfter(id: string | null): Story | null {
     var chosen = lineup();
     for (var i = 0; i < chosen.length; i++) {
       if (chosen[i].id === id) return chosen[i + 1] || null;
@@ -284,29 +285,30 @@ window.App = window.App || {};
     return null;
   }
 
-  function keepGoingStory() {
-    var best = null;
+  function keepGoingStory(): Story | null {
+    var best: Story | null = null;
     var list = visibleStories();
     for (var i = 0; i < list.length; i++) {
       var s = list[i];
       if (!s.lastPlayedAt || !s.pos || s.missing) continue;
       if (s.len && s.pos >= s.len - 5) continue;
-      if (!best || s.lastPlayedAt > best.lastPlayedAt) best = s;
+      // best is only ever assigned an `s` that passed the lastPlayedAt check above.
+      if (!best || s.lastPlayedAt > (best.lastPlayedAt as number)) best = s;
     }
     return best;
   }
 
-  function current() {
+  function current(): Story | null {
     return byId(currentId) || keepGoingStory() || visibleStories()[0] || null;
   }
 
   // Marks stories whose audio WebKit has evicted, so the library can say so
   // rather than failing at the moment a child presses play.
-  function verifyStorage() {
+  function verifyStorage(): void {
     var pending = stories.slice();
     function step() {
       if (!pending.length) return;
-      var story = pending.shift();
+      var story = pending.shift() as Story;
       App.store.hasChunk(story.id, 0).then(function (present) {
         var missing = !present;
         if (missing !== !!story.missing) {
@@ -324,7 +326,7 @@ window.App = window.App || {};
    * the striped cover the story would have had anyway. `artTried` stops the
    * same miss being looked up again on every launch.
    */
-  function findArtwork(story) {
+  function findArtwork(story: Story): Promise<boolean> {
     if (story.hasArt || story.artTried) return Promise.resolve(false);
     if (App.settings.get().artwork === false) return Promise.resolve(false);
 
@@ -351,22 +353,22 @@ window.App = window.App || {};
     })['catch'](function () { return false; });
   }
 
-  function falseValue() { return false; }
+  function falseValue(): boolean { return false; }
 
   /* Stories imported before this existed, or added while offline, get a cover
    * the next time there is a connection. One at a time and capped per launch,
    * so a library of fifty does not arrive at the search API all at once.
    */
-  function sweepArtwork() {
+  function sweepArtwork(): void {
     if (App.settings.get().artwork === false) return;
     var pending = stories.filter(function (s) {
       return !s.hasArt && !s.artTried && !s.missing;
     }).slice(0, 8);
 
-    function step() {
+    function step(): Promise<null> | null {
       if (!pending.length) return null;
-      return findArtwork(pending.shift()).then(function () {
-        return new Promise(function (resolve) { setTimeout(resolve, 1200); });
+      return findArtwork(pending.shift() as Story).then(function () {
+        return new Promise<null>(function (resolve) { setTimeout(resolve, 1200); });
       }).then(step);
     }
     Promise.resolve().then(step)['catch'](function () { return null; });
@@ -375,7 +377,7 @@ window.App = window.App || {};
   /* Deletes chunks left behind by an import that never finished. Skipped while
    * an import is running, because those chunks have no story row yet either.
    */
-  function reclaimOrphanChunks() {
+  function reclaimOrphanChunks(): string | void {
     // An import running now owns chunks with no story row yet, so this waits
     // rather than giving up for the rest of the session.
     if (importing) {
@@ -383,14 +385,14 @@ window.App = window.App || {};
       return 'deferred';
     }
     App.store.chunkOwners().then(function (owners) {
-      var known = {};
+      var known: Record<string, boolean> = {};
       for (var i = 0; i < stories.length; i++) known[stories[i].id] = true;
       var orphans = owners.filter(function (id) { return !known[id]; });
       if (!orphans.length) return null;
 
-      function step() {
+      function step(): Promise<null> | null {
         if (!orphans.length || importing) return null;
-        var id = orphans.shift();
+        var id = orphans.shift() as string;
         return App.store.deleteChunks(id)['catch'](function () { return null; }).then(step);
       }
       return step();
@@ -416,9 +418,11 @@ window.App = window.App || {};
     if (keep) {
       ui.paintCover($('kg-cover'), keep);
       ui.text($('kg-title'), keep.title);
-      var pct = keep.len ? Math.min(1, keep.pos / keep.len) : 0;
+      // pos is optional on Story; a keep-going story only exists once it has one, per keepGoingStory().
+      var pct = keep.len ? Math.min(1, (keep.pos as number) / keep.len) : 0;
       $('kg-bar').style.width = (pct * 100).toFixed(1) + '%';
-      $('keepgoing').onclick = function () { openStory(keep.id); };
+      var keepId = keep.id;
+      $('keepgoing').onclick = function () { openStory(keepId); };
     }
 
     var visible = visibleStories();
@@ -435,11 +439,11 @@ window.App = window.App || {};
     if (visible.length === 0) renderEmptyState(empty);
   }
 
-  function renderEmptyState(empty) {
+  function renderEmptyState(empty: HTMLElement): void {
     App.views.emptyState(empty, stories.length > 0, { add: openAdd });
   }
 
-  function homeSubtitle() {
+  function homeSubtitle(): string {
     var settings = App.settings.get();
     if (!visibleStories().length) return 'Add a story to get started';
 
@@ -452,7 +456,7 @@ window.App = window.App || {};
     return 'Pick something for tonight';
   }
 
-  function pastBedtime(bedtime) {
+  function pastBedtime(bedtime: string): boolean {
     if (!bedtime || bedtime.indexOf(':') < 0) return false;
     var parts = bedtime.split(':');
     var now = new Date();
@@ -462,11 +466,11 @@ window.App = window.App || {};
     return minutesNow >= minutesBed && now.getHours() >= 12;
   }
 
-  function renderPicks(picks) {
+  function renderPicks(picks: Story[]): void {
     App.views.picks($('picks'), picks, { open: openStory });
   }
 
-  function renderMoods(list) {
+  function renderMoods(list: Story[]): void {
     var names = ['All'];
     list.forEach(function (s) {
       if (s.mood && names.indexOf(s.mood) < 0) names.push(s.mood);
@@ -477,11 +481,11 @@ window.App = window.App || {};
       names = [];
     }
     App.views.moods($('moods'), names, mood, {
-      pick: function (name) { mood = name; renderHome(); }
+      pick: function (name: string) { mood = name; renderHome(); }
     });
   }
 
-  function renderRows(host, list) {
+  function renderRows(host: HTMLElement, list: Story[]): void {
     App.views.rows(host, list, {
       open: openStory,
       fav: toggleFav,
@@ -490,7 +494,7 @@ window.App = window.App || {};
     });
   }
 
-  function rowMeta(story) {
+  function rowMeta(story: Story): string {
     if (story.missing) return 'Needs adding again - the phone cleared it';
     var parts = [ui.minutes(story.len)];
     if (story.narrator && story.narrator !== 'you') parts.push('read by ' + story.narrator);
@@ -500,7 +504,7 @@ window.App = window.App || {};
 
   /* ================================================================ player */
 
-  function renderPlayer() {
+  function renderPlayer(): void {
     var story = current();
     if (!story) return;
     ui.text($('player-title'), story.title);
@@ -515,7 +519,7 @@ window.App = window.App || {};
    * that names the next story is also the thing that makes the behaviour
    * understandable. Nothing lined up after this one, nothing shown.
    */
-  function renderUpNext() {
+  function renderUpNext(): void {
     var node = $('upnext');
     if (!node) return;
     var story = current();
@@ -524,7 +528,7 @@ window.App = window.App || {};
     ui.show(node, !!next);
   }
 
-  function updateProgress(position, length) {
+  function updateProgress(position: number, length: number): void {
     var story = current();
     var total = length || (story ? story.len : 0) || 0;
     var fraction = total ? Math.min(1, position / total) : 0;
@@ -555,22 +559,23 @@ window.App = window.App || {};
   /* Safari draws no fill for the elapsed part of a range input, so the track
    * carries a gradient sized to the value.
    */
-  function paintScrubber(position, total) {
-    var slider = $('scrub');
+  function paintScrubber(position: number, total: number): void {
+    // The slider is a range input, so it has .disabled, .max and .value.
+    var slider = $('scrub') as HTMLInputElement;
     var usable = total > 0;
     slider.disabled = !usable;
-    slider.max = usable ? Math.round(total) : 0;
-    slider.value = usable ? Math.round(Math.min(position, total)) : 0;
+    slider.max = usable ? String(Math.round(total)) : '0';
+    slider.value = usable ? String(Math.round(Math.min(position, total))) : '0';
     scrubberFill(usable ? Math.min(1, position / total) : 0);
   }
 
-  function scrubberFill(fraction) {
+  function scrubberFill(fraction: number): void {
     // Fill width, then the full-width groove behind it.
     $('scrub').style.backgroundSize = (fraction * 100).toFixed(2) + '% 4px, 100% 4px';
   }
 
-  function wireScrubber() {
-    var slider = $('scrub');
+  function wireScrubber(): void {
+    var slider = $('scrub') as HTMLInputElement;
 
     // `input` fires throughout the drag, `change` when the finger lifts. Seeking
     // on every input event would stutter the audio, so the drag only previews
@@ -598,7 +603,7 @@ window.App = window.App || {};
     slider.addEventListener('blur', releaseScrubber, false);
   }
 
-  function releaseScrubber() {
+  function releaseScrubber(): void {
     if (!scrubbing) return;
     scrubbing = false;
     updateProgress(App.player.position(), App.player.duration());
@@ -613,7 +618,7 @@ window.App = window.App || {};
    * and the rest come from tonight's picks, so the counts on offer stop at
    * however many are lined up after it.
    */
-  function renderTimerOptions() {
+  function renderTimerOptions(): void {
     var story = current();
     var byStories = App.player.sleepByStories();
     var minutes = byStories ? 0 : App.player.currentSleepMinutes();
@@ -626,19 +631,19 @@ window.App = window.App || {};
       chosenStories: byStories,
       mostStories: Math.min(MAX_STORIES, 1 + (story ? queuedAfter(story.id) : 0))
     }, {
-      minutes: function (m) { chooseTimer(function () { App.player.setSleepMinutes(m); }); },
-      stories: function (n) { chooseTimer(function () { App.player.setSleepStories(n); }); }
+      minutes: function (m: number) { chooseTimer(function () { App.player.setSleepMinutes(m); }); },
+      stories: function (n: number) { chooseTimer(function () { App.player.setSleepStories(n); }); }
     });
   }
 
-  function chooseTimer(choose) {
+  function chooseTimer(choose: () => void): void {
     choose();
     closeSheet();
     renderTimerOptions();
     App.player.play();
   }
 
-  function sleepLabel(secondsLeft) {
+  function sleepLabel(secondsLeft: number): string {
     var stories = App.player.sleepByStories() ? App.player.currentSleepStories() : 0;
     if (stories === 1) return 'Stops at the end of this story';
     if (stories > 1) return 'Stops after this story and ' + (stories - 1) + ' more';
@@ -647,7 +652,7 @@ window.App = window.App || {};
       : 'Sleep timer finished';
   }
 
-  function wirePlayerEvents() {
+  function wirePlayerEvents(): void {
     App.player.on({
       tick: function (position, length) {
         updateProgress(position, length);
@@ -686,7 +691,15 @@ window.App = window.App || {};
     });
   }
 
-  function openStory(id, options) {
+  /* The options bag a caller can pass to openStory: `carrySleep` is the
+   * seconds (or stories) a sleep timer should keep counting down by rather
+   * than resetting, when auto-advance opens the next story in the queue.
+   */
+  interface OpenStoryOptions {
+    carrySleep?: number;
+  }
+
+  function openStory(id: string, options?: OpenStoryOptions): void {
     var opts = options || {};
     var story = byId(id);
     if (!story) return;
@@ -708,18 +721,19 @@ window.App = window.App || {};
     App.player.load(story, { autoplay: true, startAt: resume })['catch'](function (err) {
       ui.toast(err && err.message ? err.message : 'That story could not be opened.');
     });
-    if (opts.carrySleep > 0) App.player.carrySleep(opts.carrySleep);
+    // carrySleep is optional; the comparison is false whether it is absent or zero, as before.
+    if ((opts.carrySleep || 0) > 0) App.player.carrySleep(opts.carrySleep as number);
     else App.player.setSleepMinutes(App.settings.get().sleepMinutes);
     renderPlayer();
   }
 
-  function openPlayer() {
+  function openPlayer(): void {
     ui.toggleClass($('player'), 'is-open', true);
     $('player').setAttribute('aria-hidden', 'false');
     renderMini();
   }
 
-  function closePlayer() {
+  function closePlayer(): void {
     ui.toggleClass($('player'), 'is-open', false);
     $('player').setAttribute('aria-hidden', 'true');
     renderHome();
@@ -729,7 +743,7 @@ window.App = window.App || {};
   /* The mini player, as in Apple Music: whenever a story is loaded and the full
    * player is put away, a bar along the bottom keeps it in reach.
    */
-  function renderMini() {
+  function renderMini(): void {
     var loaded = App.player.currentStory();
     var story = loaded ? byId(loaded.id) : null;
     var show = !!story && $('player').className.indexOf('is-open') < 0;
@@ -754,17 +768,30 @@ window.App = window.App || {};
   var SWIPE_CLOSE_MIN = 40;          // px, so a short bar is not dismissed by a twitch
   var SWIPE_CLOSE_SPEED = 0.5;       // px per ms at the moment of release
 
-  function wireSwipeDown(node, canStart, dismiss) {
-    var swipe = null;
+  /* One finger's progress down a swipeable sheet, from the moment it moves
+   * enough to count as a drag rather than a tap.
+   */
+  interface SwipeState {
+    x: number;
+    y: number;
+    dy: number;
+    on: boolean;
+    lastY: number;
+    lastAt: number;
+    speed: number;
+  }
 
-    function start(event) {
+  function wireSwipeDown(node: HTMLElement, canStart: (target: EventTarget | null) => boolean, dismiss: () => void): void {
+    var swipe: SwipeState | null = null;
+
+    function start(event: TouchEvent): void {
       if (event.touches.length !== 1 || !canStart(event.target)) return;
       var touch = event.touches[0];
       swipe = { x: touch.clientX, y: touch.clientY, dy: 0, on: false,
                 lastY: touch.clientY, lastAt: Date.now(), speed: 0 };
     }
 
-    function move(event) {
+    function move(event: TouchEvent): void {
       if (!swipe) return;
       var touch = event.touches[0];
       var dx = touch.clientX - swipe.x;
@@ -784,7 +811,7 @@ window.App = window.App || {};
       node.style.transform = 'translateY(' + swipe.dy + 'px)';
     }
 
-    function end() {
+    function end(): void {
       if (!swipe) return;
       var done = swipe;
       swipe = null;
@@ -805,12 +832,13 @@ window.App = window.App || {};
     node.addEventListener('touchcancel', end, false);
   }
 
-  function wireSwipes() {
+  function wireSwipes(): void {
     var player = $('player');
     // The scrubber keeps its own drag, and the sheet and curtain their taps.
     wireSwipeDown(player, function (target) {
       if ($('sheet').className.indexOf('is-open') >= 0) return false;
-      for (var node = target; node && node !== player; node = node.parentNode) {
+      // Touch targets here are always elements on the way up to <player>.
+      for (var node = target as Element | null; node && node !== player; node = node.parentNode as Element | null) {
         if (node.id === 'scrub' || node.id === 'asleep') return false;
       }
       return true;
@@ -842,10 +870,10 @@ window.App = window.App || {};
     });
   }
 
-  function openSheet() { ui.toggleClass($('sheet'), 'is-open', true); ui.toggleClass($('sheet-scrim'), 'is-on', true); }
-  function closeSheet() { ui.toggleClass($('sheet'), 'is-open', false); ui.toggleClass($('sheet-scrim'), 'is-on', false); }
+  function openSheet(): void { ui.toggleClass($('sheet'), 'is-open', true); ui.toggleClass($('sheet-scrim'), 'is-on', true); }
+  function closeSheet(): void { ui.toggleClass($('sheet'), 'is-open', false); ui.toggleClass($('sheet-scrim'), 'is-on', false); }
 
-  function toggleFav(id) {
+  function toggleFav(id: string): void {
     var story = byId(id);
     if (!story) return;
     story.fav = !story.fav;
@@ -856,7 +884,7 @@ window.App = window.App || {};
 
   /* ======================================================= parent controls */
 
-  function renderParent() {
+  function renderParent(): void {
     var settings = App.settings.get();
     ui.text($('parent-name'), settings.childName || 'Your child');
     ui.text($('ours-name'), settings.childName ? settings.childName + '’s' : 'the');
@@ -871,30 +899,33 @@ window.App = window.App || {};
     renderWeek();
   }
 
-  function togglePick(id) {
+  function togglePick(id: string): void {
     var story = byId(id);
     if (story && story.pickAt) unqueue(id);
     else queue(id);
   }
 
-  function queue(id) {
+  function queue(id: string): void {
     var story = byId(id);
     if (!story || story.missing || story.pickAt) return;
     /* Two taps inside the same millisecond would tie, and a tie has no order.
      * Nudging past the last one keeps the sequence strict. */
     var last = 0;
-    stories.forEach(function (s) { if (s.pickAt > last) last = s.pickAt; });
+    stories.forEach(function (s) {
+      // pickAt is optional; falling back to 0 keeps unqueued stories out of the max.
+      if ((s.pickAt || 0) > last) last = s.pickAt as number;
+    });
     setPick(story, Math.max(Date.now(), last + 1));
     lineupChanged();
   }
 
-  function unqueue(id) {
+  function unqueue(id: string | null): void {
     var story = byId(id);
     if (story && story.pickAt) setPick(story, 0);
     lineupChanged();
   }
 
-  function setPick(story, pickAt) {
+  function setPick(story: Story, pickAt: number): void {
     story.pickAt = pickAt;
     App.store.patchStory(story.id, { pickAt: pickAt })['catch'](function () { return null; });
   }
@@ -902,10 +933,10 @@ window.App = window.App || {};
   /* Moves a story within the line-up by handing the existing pickAt values out
    * again in the new order, so the sequence stays strictly increasing.
    */
-  function movePick(from, to) {
+  function movePick(from: number, to: number): void {
     var chosen = lineup();
     if (from === to || from < 0 || to < 0 || from >= chosen.length || to >= chosen.length) return;
-    var slots = chosen.map(function (s) { return s.pickAt; });
+    var slots = chosen.map(function (s) { return s.pickAt as number; });
     chosen.splice(to, 0, chosen.splice(from, 1)[0]);
     chosen.forEach(function (story, index) {
       if (story.pickAt !== slots[index]) setPick(story, slots[index]);
@@ -913,18 +944,24 @@ window.App = window.App || {};
     lineupChanged();
   }
 
-  function lineupChanged() {
+  function lineupChanged(): void {
     renderHome();
     renderUpNext();
+  }
+
+  /* A row in a story's \u22ef menu. "Cancel" carries no action, hence the null. */
+  interface MenuItem {
+    label: string;
+    run: (() => void) | null;
   }
 
   /* The menu behind each row's ellipsis button. "Play sooner" is also the way
    * to reorder without dragging, for anyone who cannot hold and drag.
    */
-  function openStoryMenu(story) {
+  function openStoryMenu(story: Story): void {
     var chosen = lineup();
     var at = chosen.indexOf(story);
-    var items = [
+    var items: MenuItem[] = [
       at >= 0
         ? { label: 'Take out of tonight\u2019s picks', run: function () { togglePick(story.id); } }
         : { label: 'Add to tonight\u2019s picks', run: function () { togglePick(story.id); } }
@@ -948,7 +985,7 @@ window.App = window.App || {};
     node.setAttribute('aria-hidden', 'false');
   }
 
-  function closeStoryMenu() {
+  function closeStoryMenu(): void {
     ui.toggleClass($('menu'), 'is-on', false);
     $('menu').setAttribute('aria-hidden', 'true');
   }
@@ -965,31 +1002,66 @@ window.App = window.App || {};
   var DRAG_HOLD_MS = 450;
   var DRAG_EDGE = 44;        // px from the strip's edge that starts it scrolling
 
-  function wirePicksDrag() {
-    var host = $('picks');
-    var drag = null;
+  /* A pick being pressed, held and possibly dragged along the strip. Fields
+   * past `shift` only exist once the corresponding stage of the gesture has
+   * been reached - `timer`/`grab` once held, `scroller`/`width`/`home`/
+   * `scrollAt` once actually dragging.
+   */
+  interface DragPoint {
+    x: number;
+    y: number;
+  }
 
-    function point(event) {
-      var touch = event.touches ? (event.touches[0] || event.changedTouches[0]) : event;
+  interface DragState {
+    node: HTMLElement;
+    start: DragPoint;
+    last: DragPoint;
+    held: boolean;
+    on: boolean;
+    from: number;
+    after: HTMLElement | null;
+    shift: number;
+    timer?: ReturnType<typeof setTimeout>;
+    grab?: number;
+    scroller?: ReturnType<typeof setInterval>;
+    width?: number;
+    home?: number;
+    scrollAt?: number;
+  }
+
+  function wirePicksDrag(): void {
+    var host = $('picks');
+    var drag: DragState | null = null;
+
+    function point(event: TouchEvent | MouseEvent): DragPoint {
+      // Touch events carry their coordinates on a Touch; mouse events carry them directly.
+      var withTouches = event as TouchEvent;
+      var touch: Touch | MouseEvent = withTouches.touches
+        ? (withTouches.touches[0] || withTouches.changedTouches[0])
+        : (event as MouseEvent);
       return { x: touch.clientX, y: touch.clientY };
     }
 
-    function start(event) {
+    function start(event: TouchEvent | MouseEvent): void {
       if (drag) return;
-      var node = event.target;
-      while (node && node.parentNode !== host) node = node.parentNode;
+      // Picks are always elements walking up to <picks>, so this is HTMLElement throughout.
+      var node = event.target as HTMLElement | null;
+      while (node && node.parentNode !== host) node = node.parentNode as HTMLElement | null;
       if (!node) return;
       var p = point(event);
       drag = { node: node, start: p, last: p, held: false, on: false,
-               from: indexIn(node), after: node.nextElementSibling, shift: 0 };
+               from: indexIn(node), after: node.nextElementSibling as HTMLElement | null, shift: 0 };
+      // node is narrowed to Element just above, but that does not reach into
+      // this callback, which runs later; drag itself is the same story.
+      var liftedNode = node;
       drag.timer = setTimeout(function () {
-        drag.held = true;
-        drag.grab = p.x - node.getBoundingClientRect().left;   // finger's place on the cover
-        ui.toggleClass(node, 'is-lifted', true);
+        (drag as DragState).held = true;
+        (drag as DragState).grab = p.x - liftedNode.getBoundingClientRect().left;   // finger's place on the cover
+        ui.toggleClass(liftedNode, 'is-lifted', true);
       }, DRAG_HOLD_MS);
     }
 
-    function move(event) {
+    function move(event: TouchEvent | MouseEvent): void {
       if (!drag) return;
       var p = point(event);
       var dx = p.x - drag.start.x;
@@ -1019,36 +1091,40 @@ window.App = window.App || {};
    * makes the engine lay the page out again on the spot, which is the last
    * thing a finger-tracking loop should be doing sixty times a second.
    */
-    function measure() {
-      drag.width = drag.node.offsetWidth;
-      drag.home = drag.node.getBoundingClientRect().left - drag.shift;
-      drag.scrollAt = host.scrollLeft;
+    function measure(): void {
+      // Only called once a drag is under way.
+      var d = drag as DragState;
+      d.width = d.node.offsetWidth;
+      d.home = d.node.getBoundingClientRect().left - d.shift;
+      d.scrollAt = host.scrollLeft;
     }
 
-    function follow() {
-      var node = drag.node;
-      var x = drag.last.x;
+    function follow(): void {
+      // Only called once a drag is under way, after measure() has run.
+      var d = drag as DragState;
+      var node = d.node;
+      var x = d.last.x;
       // The row shifts under the finger when the strip scrolls; the home
       // position moves with it rather than being measured again.
-      drag.home -= host.scrollLeft - drag.scrollAt;
-      drag.scrollAt = host.scrollLeft;
+      d.home = (d.home as number) - (host.scrollLeft - (d.scrollAt as number));
+      d.scrollAt = host.scrollLeft;
 
-      var edge = drag.home + drag.shift;      // where the pick is drawn now
+      var edge = d.home + d.shift;      // where the pick is drawn now
       var prev = node.previousElementSibling;
       var next = node.nextElementSibling;
-      if (prev && edge < drag.home - drag.width / 2) {
+      if (prev && edge < d.home - (d.width as number) / 2) {
         host.insertBefore(node, prev);
         measure();
-      } else if (next && edge > drag.home + drag.width / 2) {
+      } else if (next && edge > d.home + (d.width as number) / 2) {
         host.insertBefore(node, next.nextElementSibling);
         measure();
       }
 
-      drag.shift = x - drag.grab - drag.home;
-      node.style.transform = 'translateX(' + drag.shift + 'px)';
+      d.shift = x - (d.grab as number) - d.home;
+      node.style.transform = 'translateX(' + d.shift + 'px)';
     }
 
-    function edgeScroll() {
+    function edgeScroll(): void {
       if (!drag || !drag.on) return;
       var box = host.getBoundingClientRect();
       var step = 0;
@@ -1060,7 +1136,7 @@ window.App = window.App || {};
       if (host.scrollLeft !== before) follow();
     }
 
-    function stop(event) {
+    function stop(event?: TouchEvent | MouseEvent): void {
       if (!drag) return;
       var done = drag;
       drag = null;
@@ -1088,7 +1164,9 @@ window.App = window.App || {};
       if (to >= 0) movePick(done.from, to);
     }
 
-    function indexIn(node) { return [].indexOf.call(host.children, node); }
+    // Same function as [].indexOf; spelled this way so an empty array literal
+    // does not leave TypeScript with nothing to infer indexOf's element type from.
+    function indexIn(node: Element): number { return Array.prototype.indexOf.call(host.children, node); }
 
     host.addEventListener('touchstart', start, false);
     host.addEventListener('touchmove', move, { passive: false });
@@ -1112,14 +1190,14 @@ window.App = window.App || {};
     { key: 'artwork', label: 'Find cover art online' }
   ];
 
-  function renderToggles() {
+  function renderToggles(): void {
     var settings = App.settings.get();
     App.views.toggles($('toggles'), PLAYBACK_TOGGLES.map(function (row) {
-      return { key: row.key, label: row.label, on: settings[row.key] !== false };
+      return { key: row.key, label: row.label, on: settings[row.key as keyof Settings] !== false };
     }), {
-      toggle: function (key, on) {
-        var patch = {};
-        patch[key] = on;
+      toggle: function (key: string, on: boolean) {
+        var patch: Partial<Settings> = {};
+        (patch as any)[key] = on;
         App.settings.set(patch);
         renderToggles();
         renderHome();
@@ -1127,7 +1205,7 @@ window.App = window.App || {};
     });
   }
 
-  function renderStorage() {
+  function renderStorage(): void {
     var total = 0;
     stories.forEach(function (s) { total += s.size || 0; });
     ui.text($('storage-used'), ui.bytes(total) + ' stored');
@@ -1138,8 +1216,8 @@ window.App = window.App || {};
     App.views.storedList(host, stories, { remove: removeStory });
   }
 
-  function storageNote() {
-    var parts = [];
+  function storageNote(): string {
+    var parts: string[] = [];
     if (spaceEstimate && spaceEstimate.quota > spaceEstimate.usage) {
       parts.push(ui.bytes(spaceEstimate.quota - spaceEstimate.usage) + ' still free for this app');
     } else {
@@ -1153,7 +1231,15 @@ window.App = window.App || {};
   /* An in-app confirmation rather than window.confirm, which a Home Screen web
    * app renders as a system alert captioned with the site's origin.
    */
-  function askConfirm(options, onConfirm) {
+  /* The options bag askConfirm shows in the in-app confirmation sheet. */
+  interface ConfirmOptions {
+    title: string;
+    body?: string;
+    confirmLabel?: string;
+    cancelLabel?: string;
+  }
+
+  function askConfirm(options: ConfirmOptions, onConfirm: () => void): void {
     var node = $('confirm');
     ui.text($('confirm-title'), options.title);
     ui.text($('confirm-body'), options.body || '');
@@ -1175,7 +1261,7 @@ window.App = window.App || {};
     node.setAttribute('aria-hidden', 'false');
   }
 
-  function removeStory(story) {
+  function removeStory(story: Story): void {
     askConfirm({
       title: 'Remove \u201c' + story.title + '\u201d?',
       body: 'The audio is deleted from this phone, freeing ' + ui.bytes(story.size) +
@@ -1185,8 +1271,9 @@ window.App = window.App || {};
     }, function () { deleteStoryNow(story); });
   }
 
-  function deleteStoryNow(story) {
-    if (App.player.currentStory() && App.player.currentStory().id === story.id) App.player.pause();
+  function deleteStoryNow(story: Story): void {
+    var playing = App.player.currentStory();
+    if (playing && playing.id === story.id) App.player.pause();
     App.media.release(story.id);
     App.media.forgetArt(story.id);
     App.store.deleteStory(story.id).then(function () {
@@ -1199,7 +1286,7 @@ window.App = window.App || {};
     });
   }
 
-  function renderWeek() {
+  function renderWeek(): void {
     var week = App.stats.week();
     ui.text($('week-listened'), week.seconds
       ? ui.minutes(week.seconds) + ' listened'
@@ -1209,18 +1296,26 @@ window.App = window.App || {};
       : 'No nights recorded yet');
   }
 
-  function applySettingsToForm() {
+  function applySettingsToForm(): void {
     var settings = App.settings.get();
-    $('set-bedtime').value = settings.bedtime;
-    $('set-per-night').value = String(settings.perNight);
-    $('set-sleep').value = String(settings.sleepMinutes);
-    $('set-name').value = settings.childName;
+    // These are all <input> elements in index.html, hence .value.
+    ($('set-bedtime') as HTMLInputElement).value = settings.bedtime;
+    ($('set-per-night') as HTMLInputElement).value = String(settings.perNight);
+    ($('set-sleep') as HTMLInputElement).value = String(settings.sleepMinutes);
+    ($('set-name') as HTMLInputElement).value = settings.childName;
   }
 
   /* ============================================================== importing */
 
-  function handleFiles(fileList) {
-    var files = [];
+  /* A File tagged, the moment it is queued, with the key its import row is
+   * stored under - there is no other way to find a row back from its file.
+   */
+  interface QueuedFile extends File {
+    __key: string;
+  }
+
+  function handleFiles(fileList: FileList | File[]): void {
+    var files: File[] = [];
     for (var i = 0; i < fileList.length; i++) files.push(fileList[i]);
     if (!files.length) return;
 
@@ -1231,14 +1326,14 @@ window.App = window.App || {};
     ui.show($('imports-block'), true);
     ui.show($('ours-block'), true);
 
-    function next() {
+    function next(): Promise<void> {
       if (!queue.length) {
         importing = false;
         updateImportLabel();
         return Promise.resolve();
       }
-      var file = queue.shift();
-      var row = importRows[file.__key];
+      var file = queue.shift() as File;
+      var row = importRows[(file as QueuedFile).__key];
       return App.importer.importFile(file, function (fraction) {
         setRowProgress(row, fraction);
       }).then(function (story) {
@@ -1263,10 +1358,10 @@ window.App = window.App || {};
 
   var rowSeq = 0;
 
-  function addImportRow(file) {
-    file.__key = 'imp' + (++rowSeq);
-    var row = {
-      key: file.__key,
+  function addImportRow(file: File): ImportRow {
+    (file as QueuedFile).__key = 'imp' + (++rowSeq);
+    var row: ImportRow = {
+      key: (file as QueuedFile).__key,
       name: App.importer.titleFromName(file.name),
       art: ui.stripes(App.importer.hash(file.name) % 360, true),
       artLabel: 'ART',
@@ -1276,36 +1371,38 @@ window.App = window.App || {};
       storyId: null,
       done: false
     };
-    importRows[file.__key] = row;
+    importRows[(file as QueuedFile).__key] = row;
     importOrder.push(row);
     renderImports();
     return row;
   }
 
-  function renderImports() {
+  function renderImports(): void {
     App.views.imports($('imports'), importOrder, { art: chooseImportArt });
   }
 
-  function chooseImportArt(row, image) {
+  function chooseImportArt(row: ImportRow, image: File): void {
     if (!row.storyId) {
       ui.toast('Wait for the import to finish, then pick a picture.');
       return;
     }
-    App.importer.setArt(row.storyId, image).then(function () {
-      return App.media.artUrl(row.storyId);
+    // Captured so the closures below keep a definite string, not row.storyId.
+    var storyId = row.storyId;
+    App.importer.setArt(storyId, image).then(function () {
+      return App.media.artUrl(storyId);
     }).then(function (url) {
       if (url) {
         row.art = 'url("' + url + '")';
         row.artLabel = 'EDIT';
       }
-      var story = byId(row.storyId);
+      var story = byId(storyId);
       if (story) story.hasArt = true;
       renderImports();
       renderAll();
     })['catch'](function () { ui.toast('That picture could not be used.'); });
   }
 
-  function setRowProgress(row, fraction) {
+  function setRowProgress(row: ImportRow, fraction: number): void {
     if (!row) return;
     var pct = Math.round(fraction * 100);
     if (pct === row.percent) return;      // the same bar, redrawn, helps nobody
@@ -1314,7 +1411,7 @@ window.App = window.App || {};
     renderImports();
   }
 
-  function finishRow(row, story) {
+  function finishRow(row: ImportRow, story: Story): void {
     if (!row) return;
     row.done = true;
     row.storyId = story.id;
@@ -1332,7 +1429,7 @@ window.App = window.App || {};
     });
   }
 
-  function failRow(row, message) {
+  function failRow(row: ImportRow, message: string): void {
     if (!row) return;
     row.state = 'failed';
     row.percent = 100;
@@ -1341,7 +1438,7 @@ window.App = window.App || {};
     ui.toast(message);
   }
 
-  function updateImportLabel() {
+  function updateImportLabel(): void {
     var total = 0;
     var done = 0;
     for (var key in importRows) {
@@ -1354,7 +1451,7 @@ window.App = window.App || {};
 
   /* ================================================================= events */
 
-  function wireControls() {
+  function wireControls(): void {
     $('player-close').onclick = closePlayer;
     $('mini-open').onclick = openPlayer;
     $('mini-play').onclick = function () { App.player.toggle(); };
@@ -1392,8 +1489,10 @@ window.App = window.App || {};
     };
 
     $('file-input').onchange = function (event) {
-      handleFiles(event.target.files || []);
-      event.target.value = '';
+      // The change event's target is this file input.
+      var input = event.target as HTMLInputElement;
+      handleFiles(input.files || []);
+      input.value = '';
     };
 
     $('ours-switch').onclick = function () {
@@ -1402,22 +1501,23 @@ window.App = window.App || {};
       renderAll();
     };
 
-    $('set-bedtime').onchange = function () {
-      App.settings.set({ bedtime: this.value || '19:30' });
+    // `this` inside each handler below is the input it was assigned to.
+    $('set-bedtime').onchange = function (this: GlobalEventHandlers) {
+      App.settings.set({ bedtime: (this as HTMLInputElement).value || '19:30' });
       renderHome();
     };
-    $('set-per-night').onchange = function () {
-      App.settings.set({ perNight: parseInt(this.value, 10) || 0 });
+    $('set-per-night').onchange = function (this: GlobalEventHandlers) {
+      App.settings.set({ perNight: parseInt((this as HTMLInputElement).value, 10) || 0 });
       renderHome();
     };
-    $('set-sleep').onchange = function () {
-      var minutes = parseInt(this.value, 10) || 20;
+    $('set-sleep').onchange = function (this: GlobalEventHandlers) {
+      var minutes = parseInt((this as HTMLInputElement).value, 10) || 20;
       App.settings.set({ sleepMinutes: minutes });
       App.player.defaultSleepMinutes(minutes);
       renderTimerOptions();
     };
-    $('set-name').oninput = function () {
-      App.settings.set({ childName: this.value.trim() });
+    $('set-name').oninput = function (this: GlobalEventHandlers) {
+      App.settings.set({ childName: (this as HTMLInputElement).value.trim() });
       renderHome();
       renderParent();
     };
@@ -1428,7 +1528,7 @@ window.App = window.App || {};
     wireSwipes();
   }
 
-  function openAdd() {
+  function openAdd(): void {
     ui.toggleClass($('add'), 'is-open', true);
     $('add').setAttribute('aria-hidden', 'false');
     var hasImports = importOrder.length > 0;
@@ -1437,20 +1537,21 @@ window.App = window.App || {};
     ui.show($('add-empty'), !hasImports && stories.length === 0);
   }
 
-  function scrollTop() {
+  function scrollTop(): void {
     $('library').scrollTop = 0;
   }
+  void scrollTop;   // unused in this build, same as in the hand-written original
 
   // Hold the moon for three seconds to reach parent controls. Pointer events
   // do not exist on iOS 12, so touch and mouse are wired separately.
-  function wireHold() {
+  function wireHold(): void {
     var button = $('moon-btn');
     var ring = $('hold-ring');
 
-    function start(event) {
+    function start(event: TouchEvent | MouseEvent): void {
       if (event.type === 'touchstart') event.preventDefault();
       holdStart = Date.now();
-      clearInterval(holdTimer);
+      clearInterval(holdTimer as ReturnType<typeof setInterval>);
       holdTimer = setInterval(function () {
         var fraction = (Date.now() - holdStart) / HOLD_MS;
         ui.ring(ring, fraction);
@@ -1461,8 +1562,8 @@ window.App = window.App || {};
       }, 50);
     }
 
-    function stop() {
-      clearInterval(holdTimer);
+    function stop(): void {
+      clearInterval(holdTimer as ReturnType<typeof setInterval>);
       holdTimer = null;
       ui.ring(ring, 0);
     }
@@ -1476,7 +1577,7 @@ window.App = window.App || {};
     button.addEventListener('contextmenu', function (event) { event.preventDefault(); }, false);
   }
 
-  function openParent() {
+  function openParent(): void {
     renderParent();
     applySettingsToForm();
     ui.toggleClass($('parent'), 'is-open', true);
@@ -1497,7 +1598,7 @@ window.App = window.App || {};
     lineup: lineup,
     togglePick: togglePick,
     reclaimOrphanChunks: reclaimOrphanChunks,
-    setImporting: function (value) { importing = value; },
+    setImporting: function (value: boolean) { importing = value; },
     renderAll: renderAll,
     verifyStorage: verifyStorage,
     findArtwork: findArtwork

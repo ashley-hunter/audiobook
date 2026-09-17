@@ -4,33 +4,33 @@
  * piece is written to IndexedDB before the next one is read, so importing a
  * two hour audiobook costs about a megabyte of memory rather than hundreds.
  */
-window.App = window.App || {};
+window.App = window.App || ({} as typeof App);
 
-App.importer = (function () {
+App.importer = (function (): ImporterModule {
   'use strict';
 
   var AUDIO_EXT = /\.(mp3|m4a|m4b|aac|wav|flac|mp4|caf)$/i;
 
-  function newId() {
+  function newId(): string {
     return 's' + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
   }
 
-  function titleFromName(name) {
+  function titleFromName(name: string): string {
     return name.replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Untitled story';
   }
 
-  function looksLikeAudio(file) {
+  function looksLikeAudio(file: File): boolean {
     return (file.type && file.type.indexOf('audio') === 0) || AUDIO_EXT.test(file.name || '') ||
            file.type === 'video/mp4'; // iOS reports some .m4b files this way
   }
 
   // Duration straight from the decoder, so the player shows real times.
-  function measure(file) {
-    return new Promise(function (resolve) {
+  function measure(file: File): Promise<number> {
+    return new Promise<number>(function (resolve) {
       var url = URL.createObjectURL(file);
       var audio = document.createElement('audio');
       var settled = false;
-      function done(seconds) {
+      function done(seconds: number) {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
@@ -47,13 +47,15 @@ App.importer = (function () {
     });
   }
 
-  function readChunk(file, start, size) {
+  function readChunk(file: File, start: number, size: number): Promise<ArrayBuffer> {
     return App.caps.readArrayBuffer(file.slice(start, Math.min(file.size, start + size)));
   }
 
-  function friendlyError(err) {
-    var name = err && err.name ? err.name : '';
-    if (name === 'QuotaExceededError' || /quota/i.test(String(err && err.message))) {
+  function friendlyError(err: unknown): string {
+    // The caught value's shape is never guaranteed - duck-typed exactly as before.
+    var e = err as { name?: string; message?: string };
+    var name = e && e.name ? e.name : '';
+    if (name === 'QuotaExceededError' || /quota/i.test(String(e && e.message))) {
       return 'No room left on this phone for that file.';
     }
     if (name === 'NotReadableError' || name === 'NotFoundError') {
@@ -66,12 +68,13 @@ App.importer = (function () {
    * onProgress(fraction 0..1) fires as chunks land.
    * Resolves with the saved story record.
    */
-  function importFile(file, onProgress) {
+  function importFile(file: File, onProgress: (fraction: number) => void): Promise<Story> {
     if (!looksLikeAudio(file)) {
       return Promise.reject(new Error('That is not an audio file.'));
     }
 
     var id = newId();
+    // assets/js/store.js) but is not yet declared on StoreModule.
     var chunkSize = App.store.CHUNK_SIZE;
     var chunkCount = Math.max(1, Math.ceil(file.size / chunkSize));
     var story = {
@@ -115,14 +118,22 @@ App.importer = (function () {
       .then(function () { return story; })
       ['catch'](function (err) {
         return App.store.deleteStory(id)['catch'](function () { return null; }).then(function () {
-          var wrapped = new Error(friendlyError(err));
+          var wrapped = new Error(friendlyError(err)) as Error & { cause?: unknown };
+          // Error.cause is ES2022; this project's lib target is ES2018, but the
+          // property still works at runtime, so this just tells the compiler.
           wrapped.cause = err;
           throw wrapped;
         });
       });
   }
 
-  function writeChunks(file, id, chunkSize, chunkCount, onProgress) {
+  function writeChunks(
+    file: File,
+    id: string,
+    chunkSize: number,
+    chunkCount: number,
+    onProgress: (fraction: number) => void
+  ): Promise<void> {
     var index = 0;
     function step() {
       if (index >= chunkCount) return Promise.resolve();
@@ -140,7 +151,7 @@ App.importer = (function () {
     return step();
   }
 
-  function hash(text) {
+  function hash(text: string): number {
     var h = 0;
     for (var i = 0; i < text.length; i++) {
       h = ((h << 5) - h + text.charCodeAt(i)) | 0;
@@ -149,7 +160,7 @@ App.importer = (function () {
   }
 
   // Replaces the cover art on an existing story.
-  function setArt(storyId, file) {
+  function setArt(storyId: string, file: File): Promise<unknown> {
     if (!file || file.type.indexOf('image') !== 0) {
       return Promise.reject(new Error('That is not an image.'));
     }

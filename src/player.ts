@@ -12,19 +12,19 @@
  * once the context is confirmed running. If it never runs there is no fade and
  * the story plays straight to the speakers, which is the right way to fail.
  */
-window.App = window.App || {};
+window.App = window.App || ({} as typeof App);
 
-App.player = (function () {
+App.player = (function (): PlayerModule {
   'use strict';
 
   var FADE_SECONDS = 20;    // how long the story takes to fade to silence
   var SAVE_EVERY = 5;       // seconds between position checkpoints
   var SEEK_STEP = 15;       // lock screen skip, where the platform offers one
 
-  var audio = null;
-  var story = null;
-  var handlers = {};
-  var ticker = null;
+  var audio: HTMLAudioElement | null = null;
+  var story: Story | null = null;
+  var handlers: PlayerHandlers = {};
+  var ticker: number | undefined;        // undefined rather than null, so clearInterval takes it as it is
 
   var sleepMinutes = 20;
   var sleepDeadline = 0;    // absolute ms while the timer is running, else 0
@@ -32,23 +32,23 @@ App.player = (function () {
   var storiesChosen = 0;    // stop after this many stories; 0 means the timer is in minutes
   var sleepStories = 0;     // stories still to finish, this one included
   var fading = false;
-  var fadeTimer = null;
+  var fadeTimer: number | undefined;
   var asleep = false;
   var usedServiceWorker = false;
   var lastSaved = 0;
   var listenedCarry = 0;
   var lastTickAt = 0;
 
-  var ctx = null;
-  var gain = null;
-  var graphEl = null;       // the element currently wired into the graph
-  var volumeWorks = null;
+  var ctx: AudioContext | null = null;
+  var gain: GainNode | null = null;
+  var graphEl: HTMLAudioElement | null = null;       // the element currently wired into the graph
+  var volumeWorks: boolean | null = null;
 
-  function on(map) {
+  function on(map: PlayerHandlers): void {
     for (var k in map) if (Object.prototype.hasOwnProperty.call(map, k)) handlers[k] = map[k];
   }
 
-  function emit(name, a, b) {
+  function emit(name: string, a?: any, b?: any): void {
     if (handlers[name]) handlers[name](a, b);
   }
 
@@ -56,16 +56,16 @@ App.player = (function () {
    * Left running it would wake the phone every second for a story that is
    * paused, or for no story at all, which is a real cost on an old battery.
    */
-  function startTicker() {
+  function startTicker(): void {
     if (!ticker) ticker = setInterval(tick, 1000);
   }
 
-  function stopTicker() {
+  function stopTicker(): void {
     clearInterval(ticker);
-    ticker = null;
+    ticker = undefined;
   }
 
-  function makeAudio() {
+  function makeAudio(): HTMLAudioElement {
     var el = document.createElement('audio');
     el.preload = 'metadata';
     el.setAttribute('playsinline', '');
@@ -92,7 +92,7 @@ App.player = (function () {
     return el;
   }
 
-  function init() {
+  function init(): void {
     var existing = document.getElementById('audio');
     audio = makeAudio();
     if (existing && existing.parentNode) existing.parentNode.replaceChild(audio, existing);
@@ -113,7 +113,7 @@ App.player = (function () {
   /* Lock screen and headphone controls on iOS 15+, Android and desktop. On an
    * iPhone 6 none of this exists and the in-app controls are the only ones.
    */
-  function registerLockScreenControls() {
+  function registerLockScreenControls(): void {
     App.caps.media.setActions({
       play: function () { play(); },
       pause: function () { pause(); },
@@ -123,7 +123,7 @@ App.player = (function () {
     });
   }
 
-  function publishNowPlaying() {
+  function publishNowPlaying(): void {
     if (!story) return;
     App.caps.media.setMetadata({
       title: story.title,
@@ -131,9 +131,12 @@ App.player = (function () {
       album: story.album || 'Bedtime'
     });
     App.caps.media.setPlaybackState(playing());
-    if (story.hasArt) {
-      App.media.artUrl(story.id).then(function (url) {
-        if (!url || !story || story.id !== (currentStory() && currentStory().id)) return;
+    if (story!.hasArt) {
+      App.media.artUrl(story!.id).then(function (url) {
+        // `currentStory()` is called twice on purpose - it is a plain read of
+        // the closure variable, not something worth caching - but the second
+        // call's result is not narrowed by the `&&`, so it is asserted here.
+        if (!url || !story || story.id !== (currentStory() && (currentStory() as Story).id)) return;
         App.caps.media.setMetadata({
           title: story.title,
           artist: story.narrator && story.narrator !== 'you' ? 'Read by ' + story.narrator : 'Bedtime',
@@ -144,25 +147,25 @@ App.player = (function () {
     }
   }
 
-  function seekBy(seconds) {
+  function seekBy(seconds: number): void {
     seekTo(position() + seconds);
   }
 
-  function seekTo(seconds) {
+  function seekTo(seconds: number): void {
     if (!story || !audio) return;
     var total = duration();
     // Landing exactly on the end fires `ended` and throws the story away, which
     // is not what dragging the slider to the right edge should mean.
     var target = Math.max(0, Math.min(total > 1 ? total - 1 : 0, seconds));
-    try { audio.currentTime = target; } catch (err) { void err; }
+    try { audio!.currentTime = target; } catch (err) { void err; }
     checkpoint(true);
-    App.caps.media.setPosition(total, target, audio.playbackRate || 1);
+    App.caps.media.setPosition(total, target, audio!.playbackRate || 1);
     emit('tick', position(), total);
   }
 
   /* ------------------------------------------------------------- loading */
 
-  function load(next, options) {
+  function load(next: Story, options?: LoadOptions): Promise<unknown> {
     var opts = options || {};
     checkpoint(true);
     /* Where the service worker route is unusable, a story is played from a Blob
@@ -179,9 +182,9 @@ App.player = (function () {
 
     return App.media.source(story).then(function (src) {
       usedServiceWorker = src.viaServiceWorker;
-      audio.src = src.url;
-      audio.load();
-      var startAt = typeof opts.startAt === 'number' ? opts.startAt : (story.pos || 0);
+      audio!.src = src.url;
+      audio!.load();
+      var startAt = typeof opts.startAt === 'number' ? opts.startAt : (story!.pos || 0);
       if (startAt > 1) seekWhenReady(startAt);
       publishNowPlaying();
       emit('loaded', story);
@@ -200,26 +203,26 @@ App.player = (function () {
    */
   var seekToken = 0;
 
-  function seekWhenReady(seconds) {
+  function seekWhenReady(seconds: number): void {
     var mine = ++seekToken;
 
-    function ready() {
-      return audio.readyState >= 1 && isFinite(audio.duration) && audio.duration > 0;
+    function ready(): boolean {
+      return audio!.readyState >= 1 && isFinite(audio!.duration) && audio!.duration > 0;
     }
 
-    function trySeek() {
+    function trySeek(): boolean {
       if (!ready()) return false;
       try {
-        audio.currentTime = Math.min(seconds, Math.max(0, audio.duration - 2));
+        audio!.currentTime = Math.min(seconds, Math.max(0, audio!.duration - 2));
         return true;
       } catch (err) { void err; return false; }
     }
 
     if (trySeek()) return;
     // Optimistic, for engines that queue it; the listener is what makes it stick.
-    try { audio.currentTime = seconds; } catch (err) { void err; }
-    audio.addEventListener('loadedmetadata', function once() {
-      audio.removeEventListener('loadedmetadata', once);
+    try { audio!.currentTime = seconds; } catch (err) { void err; }
+    audio!.addEventListener('loadedmetadata', function once() {
+      audio!.removeEventListener('loadedmetadata', once);
       if (mine !== seekToken) return;   // another story was loaded meanwhile
       trySeek();
     });
@@ -227,7 +230,7 @@ App.player = (function () {
 
   /* ----------------------------------------------------------- transport */
 
-  function play() {
+  function play(): Promise<unknown> {
     if (!story) return Promise.resolve();
     asleep = false;
     /* Pressing play is the user gesture the audio graph needs. Building it here
@@ -236,7 +239,7 @@ App.player = (function () {
      * iOS will never unlock. */
     ensureGraph();
     restoreGain();
-    var result = audio.play();
+    var result = audio!.play();
     if (result && result['catch']) {
       return result['catch'](function (err) {
         if (err && err.name === 'NotAllowedError') {
@@ -249,47 +252,47 @@ App.player = (function () {
     return Promise.resolve();
   }
 
-  function pause() {
+  function pause(): void {
     if (audio) audio.pause();
     checkpoint(true);
   }
 
   // Stops and lets go of the story, keeping its place for next time.
-  function unload() {
+  function unload(): void {
     if (!story) return;
     pause();
     stopTicker();
     story = null;
     fading = false;
     restoreGain();
-    audio.removeAttribute('src');
-    audio.load();
+    audio!.removeAttribute('src');
+    audio!.load();
     App.caps.media.setPlaybackState(false);
   }
 
-  function toggle() {
+  function toggle(): Promise<unknown> {
     if (!story) return Promise.resolve();
-    if (audio.paused) return play();
+    if (audio!.paused) return play();
     pause();
     recordNight(false);
     return Promise.resolve();
   }
 
-  function position() { return audio && isFinite(audio.currentTime) ? audio.currentTime : 0; }
+  function position(): number { return audio && isFinite(audio.currentTime) ? audio.currentTime : 0; }
 
-  function duration() {
+  function duration(): number {
     if (audio && isFinite(audio.duration) && audio.duration > 0) return audio.duration;
     return story && story.len ? story.len : 0;
   }
 
-  function playing() { return !!(audio && !audio.paused && !audio.ended); }
+  function playing(): boolean { return !!(audio && !audio.paused && !audio.ended); }
 
-  function currentStory() { return story; }
-  function ended() { return !!(audio && audio.ended); }
+  function currentStory(): Story | null { return story; }
+  function ended(): boolean { return !!(audio && audio.ended); }
 
   /* --------------------------------------------------------- sleep timer */
 
-  function armSleep(minutes) {
+  function armSleep(minutes: number): void {
     storiesChosen = 0;
     sleepStories = 0;
     sleepMinutes = minutes;
@@ -300,7 +303,7 @@ App.player = (function () {
   }
 
   // The countdown only runs while sound is actually coming out.
-  function resumeSleep() {
+  function resumeSleep(): void {
     if (storiesChosen) {
       if (!sleepStories) sleepStories = storiesChosen;   // a new night after the last one ended
       return;
@@ -310,7 +313,7 @@ App.player = (function () {
     sleepDeadline = Date.now() + sleepRemaining * 1000;
   }
 
-  function suspendSleep() {
+  function suspendSleep(): void {
     if (storiesChosen) {
       fading = false;
       return;
@@ -327,7 +330,7 @@ App.player = (function () {
     fading = false;
   }
 
-  function setSleepMinutes(minutes) {
+  function setSleepMinutes(minutes: number): void {
     armSleep(minutes);
     emit('sleep', sleepLeft());
   }
@@ -336,7 +339,7 @@ App.player = (function () {
    * it the child already is. The last one fades out over its closing seconds
    * and the night ends when it does.
    */
-  function setSleepStories(count) {
+  function setSleepStories(count: number): void {
     storiesChosen = count;
     sleepStories = count;
     sleepDeadline = 0;
@@ -345,7 +348,7 @@ App.player = (function () {
     emit('sleep', sleepLeft());
   }
 
-  function defaultSleepMinutes(minutes) {
+  function defaultSleepMinutes(minutes: number): void {
     sleepMinutes = minutes;
     sleepRemaining = minutes * 60;
     if (sleepDeadline) sleepDeadline = Date.now() + sleepRemaining * 1000;
@@ -356,7 +359,7 @@ App.player = (function () {
    * wrong when a line-up runs on: twenty minutes of sleep timer has to mean
    * twenty minutes, not twenty minutes per story.
    */
-  function carrySleep(seconds) {
+  function carrySleep(seconds: number): void {
     if (!(seconds > 0)) return;
     if (storiesChosen) {   // the count already carries itself; `seconds` is stories left
       fading = false;
@@ -371,18 +374,18 @@ App.player = (function () {
     emit('sleep', sleepLeft());
   }
 
-  function sleepLeft() {
+  function sleepLeft(): number {
     // In story mode, anything above zero means the night is still going.
     if (storiesChosen) return sleepStories ? Math.max(1, Math.round(duration() - position())) : 0;
     if (!sleepDeadline) return sleepRemaining;
     return Math.max(0, Math.round((sleepDeadline - Date.now()) / 1000));
   }
 
-  function currentSleepMinutes() { return sleepMinutes; }
-  function currentSleepStories() { return sleepStories; }
-  function sleepByStories() { return storiesChosen; }
+  function currentSleepMinutes(): number { return sleepMinutes; }
+  function currentSleepStories(): number { return sleepStories; }
+  function sleepByStories(): number { return storiesChosen; }
 
-  function wake() {
+  function wake(): Promise<unknown> {
     asleep = false;
     if (storiesChosen) setSleepStories(storiesChosen);
     else armSleep(sleepMinutes);
@@ -391,7 +394,7 @@ App.player = (function () {
 
   /* -------------------------------------------------------------- ticker */
 
-  function tick() {
+  function tick(): void {
     if (!story) return;
     var isPlaying = playing();
 
@@ -412,7 +415,7 @@ App.player = (function () {
     }
 
     emit('tick', position(), duration());
-    if (isPlaying) App.caps.media.setPosition(duration(), position(), audio.playbackRate || 1);
+    if (isPlaying) App.caps.media.setPosition(duration(), position(), audio!.playbackRate || 1);
     // A context unlocked a moment after play was pressed still gets wired up,
     // so the fade is ready long before the timer needs it.
     if (isPlaying && ctx && !gain) connectGraph();
@@ -438,7 +441,7 @@ App.player = (function () {
     }
   }
 
-  function tickStoryFade(isPlaying) {
+  function tickStoryFade(isPlaying: boolean): void {
     var tail = duration() - position();
     if (!isPlaying || sleepStories !== 1 || !(duration() > 0)) return;
     if (!fading && tail <= FADE_SECONDS) {
@@ -450,9 +453,9 @@ App.player = (function () {
     }
   }
 
-  function finishSleep() {
+  function finishSleep(): void {
     fading = false;
-    audio.pause();          // clears sleepDeadline through the pause handler
+    audio!.pause();          // clears sleepDeadline through the pause handler
     sleepDeadline = 0;
     sleepRemaining = 0;     // stays at zero so the label reads "finished"
     checkpoint(true);
@@ -464,13 +467,13 @@ App.player = (function () {
 
   /* ---------------------------------------------------------------- fade */
 
-  function volumeIsWritable() {
+  function volumeIsWritable(): boolean {
     if (volumeWorks !== null) return volumeWorks;
     try {
-      var before = audio.volume;
-      audio.volume = 0.42;
-      volumeWorks = Math.abs(audio.volume - 0.42) < 0.01;
-      audio.volume = before;
+      var before = audio!.volume;
+      audio!.volume = 0.42;
+      volumeWorks = Math.abs(audio!.volume - 0.42) < 0.01;
+      audio!.volume = before;
     } catch (err) {
       void err;
       volumeWorks = false;
@@ -478,7 +481,7 @@ App.player = (function () {
     return volumeWorks;
   }
 
-  function startFade(seconds) {
+  function startFade(seconds: number): void {
     if (volumeIsWritable()) {
       fading = true;
       fadeWithVolume(seconds);
@@ -499,15 +502,15 @@ App.player = (function () {
     fading = false;
   }
 
-  function fadeWithVolume(seconds) {
+  function fadeWithVolume(seconds: number): void {
     var startedAt = Date.now();
-    var from = audio.volume;
+    var from = audio!.volume;
     clearInterval(fadeTimer);
     fadeTimer = setInterval(function () {
       var elapsed = (Date.now() - startedAt) / 1000;
       var ratio = Math.max(0, 1 - elapsed / seconds);
-      try { audio.volume = from * ratio * ratio; } catch (err) { void err; }
-      if (ratio <= 0 || audio.paused) clearInterval(fadeTimer);
+      try { audio!.volume = from * ratio * ratio; } catch (err) { void err; }
+      if (ratio <= 0 || audio!.paused) clearInterval(fadeTimer);
     }, 120);
   }
 
@@ -517,18 +520,18 @@ App.player = (function () {
    * least reliable corner of Web Audio on older WebKit and this needs none of
    * its cleverness.
    */
-  function fadeWithGain(seconds) {
+  function fadeWithGain(seconds: number): void {
     var STEPS = 24;
     try {
-      var now = ctx.currentTime;
-      var from = gain.gain.value || 1;
-      gain.gain.cancelScheduledValues(now);
-      gain.gain.setValueAtTime(from, now);
+      var now = ctx!.currentTime;
+      var from = gain!.gain.value || 1;
+      gain!.gain.cancelScheduledValues(now);
+      gain!.gain.setValueAtTime(from, now);
       for (var i = 1; i <= STEPS; i++) {
         var through = i / STEPS;
         var level = from * (1 - through) * (1 - through);
         // A gain of exactly zero is inaudible either way and keeps the ramp legal.
-        gain.gain.linearRampToValueAtTime(Math.max(0.0001, level), now + seconds * through);
+        gain!.gain.linearRampToValueAtTime(Math.max(0.0001, level), now + seconds * through);
       }
     } catch (err) {
       void err;
@@ -540,17 +543,23 @@ App.player = (function () {
    * call on every play: making a context costs nothing, and the element is not
    * joined to it until the context is actually running.
    */
-  function ensureGraph() {
+  function ensureGraph(): void {
     if (volumeIsWritable()) return;      // the plain element can fade itself
-    var Ctor = window.AudioContext || window.webkitAudioContext;
+    // Older WebKit exposes the context under a vendor prefix the DOM types do
+    // not know about, so this is read narrowly rather than casting `window`.
+    var Ctor: typeof AudioContext | undefined =
+      window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!Ctor) return;
     try {
       if (!ctx) {
         ctx = new Ctor();
         unlockContext(ctx);
       }
-      if (ctx.state === 'suspended' && ctx.resume) {
-        var resumed = ctx.resume();
+      // The DOM types say `resume` is always there; very old WebKit contexts
+      // do not carry it, which is exactly the case this feature-detects.
+      var resumable = ctx as AudioContext & { resume?: () => Promise<void> };
+      if (resumable.state === 'suspended' && resumable.resume) {
+        var resumed = resumable.resume();
         if (resumed && resumed.then) resumed.then(connectGraph, function () { return null; });
       }
       connectGraph();
@@ -564,13 +573,16 @@ App.player = (function () {
 
   // Older iOS only really starts a context once something has played through it
   // inside a gesture. One silent sample is the long-standing handshake.
-  function unlockContext(context) {
+  function unlockContext(context: AudioContext): void {
     try {
       var source = context.createBufferSource();
       source.buffer = context.createBuffer(1, 1, 22050);
       source.connect(context.destination);
+      // `noteOn` is the predecessor to `start` on very old WebKit; the DOM
+      // types only know the modern name.
+      var legacySource = source as AudioBufferSourceNode & { noteOn?: (when: number) => void };
       if (source.start) source.start(0);
-      else if (source.noteOn) source.noteOn(0);
+      else if (legacySource.noteOn) legacySource.noteOn(0);
     } catch (err) { void err; }
   }
 
@@ -578,7 +590,7 @@ App.player = (function () {
    * element's sound away from the speakers for good, so it only ever runs
    * against a context that is already running.
    */
-  function connectGraph() {
+  function connectGraph(): void {
     if (!ctx || !audio) return;
     if (graphEl === audio && gain) return;
     if (ctx.state !== 'running') return;
@@ -597,7 +609,7 @@ App.player = (function () {
   }
 
   // Whatever happened last night, the story starts at full volume.
-  function restoreGain() {
+  function restoreGain(): void {
     clearInterval(fadeTimer);   // or a fade still running pulls the volume back down
     if (gain && ctx) {
       try {
@@ -614,7 +626,7 @@ App.player = (function () {
 
   /* ----------------------------------------------------------- bookkeeping */
 
-  function checkpoint(force) {
+  function checkpoint(force: boolean): void {
     if (!story) return;
     // onEnded already put a finished story back to the start. Saving the end
     // position over that would make its next play finish straight away.
@@ -622,21 +634,21 @@ App.player = (function () {
     var pos = position();
     if (!force && Math.abs(pos - lastSaved) < SAVE_EVERY) return;
     lastSaved = pos;
-    story.pos = pos;
-    story.lastPlayedAt = Date.now();
-    App.store.patchStory(story.id, { pos: pos, lastPlayedAt: story.lastPlayedAt })['catch'](function () { return null; });
+    story!.pos = pos;
+    story!.lastPlayedAt = Date.now();
+    App.store.patchStory(story!.id, { pos: pos, lastPlayedAt: story!.lastPlayedAt })['catch'](function () { return null; });
     if (listenedCarry >= 1) {
       App.stats.addListening(Math.round(listenedCarry));
       listenedCarry = 0;
     }
   }
 
-  function recordNight(sleptThrough) {
+  function recordNight(sleptThrough: boolean): void {
     if (!story) return;
     App.stats.recordNight(sleptThrough);
   }
 
-  function onEnded() {
+  function onEnded(): void {
     stopTicker();
     var carried;
     if (storiesChosen) {
@@ -663,18 +675,18 @@ App.player = (function () {
     }
   }
 
-  function onAudioError() {
+  function onAudioError(): void {
     if (!story) return;
     if (usedServiceWorker) {
       // Some WebKit builds will not let a media element load through a service
       // worker. Fall back to a Blob URL and pick up where we were.
       App.media.demote();
       usedServiceWorker = false;
-      var resumeAt = position() || story.pos || 0;
+      var resumeAt = position() || story!.pos || 0;
       var wasPlaying = playing();
-      App.media.blobUrl(story).then(function (url) {
-        audio.src = url;
-        audio.load();
+      App.media.blobUrl(story!).then(function (url) {
+        audio!.src = url;
+        audio!.load();
         seekWhenReady(resumeAt);
         if (wasPlaying) play();
       })['catch'](function () {

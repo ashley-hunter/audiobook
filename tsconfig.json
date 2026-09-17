@@ -1,0 +1,38 @@
+{
+  /* Bedtime - TypeScript for the app's own scripts.
+   *
+   * The floor is Safari 12, so the output is ES2018. It is emitted as plain
+   * scripts, one file per module, each an IIFE hanging itself on the global
+   * `App` - the same shape the hand-written files had, and the same shape the
+   * page's <script> tags expect. No bundler, no module loader, nothing to
+   * resolve at run time.
+   *
+   * Output lands in assets/js and is not committed: src/ is the source now.
+   */
+  "compilerOptions": {
+    "target": "ES2018",
+    "lib": ["ES2018", "DOM", "DOM.Iterable"],
+    "module": "es2022",
+    "moduleDetection": "legacy",
+    "rootDir": "src",
+    "outDir": "assets/js",
+    "strict": true,
+    /* Turned off for the move itself: the code being converted is a decade of
+     * plain JavaScript, and demanding a type for every local at once would
+     * bury the actual mistakes. The exported shape of each module is typed,
+     * which is where the bugs between files live. */
+    "noImplicitAny": false,
+    "strictNullChecks": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": false,
+    "noImplicitReturns": false,
+    "removeComments": false,
+    "newLine": "lf",
+    "declaration": false,
+    "sourceMap": false,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/sw.ts"]
+}

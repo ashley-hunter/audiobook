@@ -14,15 +14,15 @@
  * The player is not here. It is updated field by field so the once-a-second
  * tick never rebuilds a node or restarts the starfield.
  */
-window.App = window.App || {};
+window.App = window.App || ({} as typeof App);
 
-App.views = (function () {
+App.views = (function (): ViewsModule {
   'use strict';
 
   var html = htm.bind(preact.h);
   var ui = App.ui;
 
-  function draw(host, tree) {
+  function draw(host: HTMLElement, tree: any): void {
     preact.render(html`<${preact.Fragment}>${tree}<//>`, host);
   }
 
@@ -30,7 +30,7 @@ App.views = (function () {
    * of IndexedDB, so it arrives after the render. A ref fresh on each render
    * repaints a story whose art has since turned up.
    */
-  function cover(className, story) {
+  function cover(className: string, story: Story): any {
     return html`<span class=${'cover ' + className} ref=${function (node) {
       if (node) ui.paintCover(node, story);
     }}></span>`;
@@ -38,8 +38,8 @@ App.views = (function () {
 
   /* ------------------------------------------------------ the library list */
 
-  function row(story, on) {
-    function heart(event) {
+  function row(story: Story, on: any): any {
+    function heart(event: Event): void {
       event.stopPropagation();
       on.fav(story.id);
     }
@@ -61,13 +61,13 @@ App.views = (function () {
       </div>`;
   }
 
-  function rows(host, list, on) {
+  function rows(host: HTMLElement, list: Story[], on: any): void {
     draw(host, list.map(function (story) { return row(story, on); }));
   }
 
   /* ------------------------------------------------------- tonight's picks */
 
-  function pick(story, index, on) {
+  function pick(story: Story, index: number, on: any): any {
     return html`
       <div class="pick" key=${story.id}>
         <button class="pick-btn" type="button" onClick=${function () { on.open(story.id); }}>
@@ -81,13 +81,13 @@ App.views = (function () {
       </div>`;
   }
 
-  function picks(host, list, on) {
+  function picks(host: HTMLElement, list: Story[], on: any): void {
     draw(host, list.map(function (story, index) { return pick(story, index, on); }));
   }
 
   /* ------------------------------------------------------------- the moods */
 
-  function moods(host, names, current, on) {
+  function moods(host: HTMLElement, names: string[], current: string, on: any): void {
     draw(host, names.map(function (name) {
       return html`
         <button class=${'mood' + (current === name ? ' is-on' : '')} type="button" key=${name}
@@ -97,7 +97,7 @@ App.views = (function () {
 
   /* ------------------------------------------------- the empty library */
 
-  function emptyState(host, hiddenByParent, on) {
+  function emptyState(host: HTMLElement, hiddenByParent: boolean, on: any): void {
     // Built as a list rather than one template: a multi-line template leaves
     // whitespace text nodes between the elements, which the hand-written
     // version did not have.
@@ -114,7 +114,7 @@ App.views = (function () {
 
   /* ------------------------------------------------------ the sleep timer */
 
-  function timerOptions(host, model, on) {
+  function timerOptions(host: HTMLElement, model: any, on: any): void {
     var minuteChips = model.minutes.map(function (m) {
       return html`
         <button class=${'timer-opt' + (model.chosenMinutes === m ? ' is-on' : '')} type="button"
@@ -123,8 +123,8 @@ App.views = (function () {
 
     // The keypad on iOS has no return key, so the value is taken on `change`,
     // which fires when its Done button closes the keyboard.
-    function typed(event) {
-      var input = event.currentTarget;
+    function typed(event: Event): void {
+      var input = event.currentTarget as HTMLInputElement;
       var minutes = parseInt(input.value, 10);
       if (!(minutes >= 1 && minutes <= model.maxMinutes)) {
         ui.toast('Pick between 1 and ' + model.maxMinutes + ' minutes.');
@@ -142,7 +142,7 @@ App.views = (function () {
                onChange=${typed} />
       </label>`;
 
-    var storyChips = [];
+    var storyChips: any[] = [];
     for (var n = 1; n <= model.mostStories; n++) {
       storyChips.push(storyChip(n, model.chosenStories === n, on));
     }
@@ -158,7 +158,7 @@ App.views = (function () {
       <//>`);
   }
 
-  function storyChip(count, on, handlers) {
+  function storyChip(count: number, on: boolean, handlers: any): any {
     return html`
       <button class=${'timer-opt' + (on ? ' is-on' : '')} type="button" key=${'s' + count}
               onClick=${function () { handlers.stories(count); }}>
@@ -168,8 +168,8 @@ App.views = (function () {
 
   /* ------------------------------------------------------ parent controls */
 
-  function toggles(host, list, on) {
-    draw(host, list.map(function (item) {
+  function toggles(host: HTMLElement, list: any[], on: any): void {
+    draw(host, list.map(function (item: any) {
       return html`
         <button class="card-row" type="button" key=${item.key}
                 onClick=${function () { on.toggle(item.key, !item.on); }}>
@@ -179,7 +179,7 @@ App.views = (function () {
     }));
   }
 
-  function storedList(host, list, on) {
+  function storedList(host: HTMLElement, list: Story[], on: any): void {
     draw(host, list.map(function (story) {
       return html`
         <div class="stored" key=${story.id}>
@@ -198,8 +198,8 @@ App.views = (function () {
 
   /* --------------------------------------------------- a story's ⋯ menu */
 
-  function menuActions(host, items) {
-    draw(host, items.map(function (item, index) {
+  function menuActions(host: HTMLElement, items: any[]): void {
+    draw(host, items.map(function (item: any, index: number) {
       return html`
         <button class="confirm-btn" type="button" key=${index}
                 onClick=${item.run}>${item.label}</button>`;
@@ -208,10 +208,10 @@ App.views = (function () {
 
   /* --------------------------------------------------------- import rows */
 
-  function imports(host, list, on) {
+  function imports(host: HTMLElement, list: ImportRow[], on: any): void {
     draw(host, list.map(function (item) {
-      function chooseArt(event) {
-        var input = event.currentTarget;
+      function chooseArt(event: Event): void {
+        var input = event.currentTarget as HTMLInputElement;
         var image = input.files && input.files[0];
         input.value = '';
         if (image) on.art(item, image);

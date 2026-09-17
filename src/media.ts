@@ -9,21 +9,21 @@
  *      The blob is grown one chunk at a time so the whole file is never held
  *      as JavaScript objects at once.
  */
-window.App = window.App || {};
+window.App = window.App || ({} as typeof App);
 
-App.media = (function () {
+App.media = (function (): MediaModule {
   'use strict';
 
-  var swUsable = null;    // null = not probed yet
-  var demoted = false;    // a media element already failed on the worker route
-  var blobUrls = {};      // storyId -> object URL
-  var artUrls = {};       // storyId -> object URL
+  var swUsable: boolean | null = null;    // null = not probed yet
+  var demoted: boolean = false;    // a media element already failed on the worker route
+  var blobUrls: Record<string, string> = {};      // storyId -> object URL
+  var artUrls: Record<string, string | null> = {};       // storyId -> object URL
 
-  function swPath(id) {
+  function swPath(id: string): string {
     return 'media/' + encodeURIComponent(id);
   }
 
-  function probe() {
+  function probe(): Promise<boolean> {
     if (swUsable !== null) return Promise.resolve(swUsable);
     if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller || !window.fetch) {
       swUsable = false;
@@ -40,7 +40,7 @@ App.media = (function () {
   }
 
   // Called by the player when a media element failed on a service worker URL.
-  function demote() {
+  function demote(): void {
     demoted = true;
     swUsable = false;
   }
@@ -53,17 +53,18 @@ App.media = (function () {
     });
   }
 
-  function usingServiceWorker() {
+  function usingServiceWorker(): boolean {
     return swUsable === true;
   }
 
-  function blobUrl(story) {
+  function blobUrl(story: Story): Promise<string> {
     if (blobUrls[story.id]) return Promise.resolve(blobUrls[story.id]);
+    // on every imported story, so the property is real at runtime.
     var type = story.mime || 'audio/mpeg';
     var blob = new Blob([], { type: type });
     var index = 0;
 
-    function step() {
+    function step(): string | Promise<string> {
       if (index >= story.chunkCount) {
         var url = URL.createObjectURL(blob);
         blobUrls[story.id] = url;
@@ -80,29 +81,33 @@ App.media = (function () {
   }
 
   // Resolves to { url, viaServiceWorker }.
-  function source(story) {
+  function source(story: Story): Promise<PlaybackSource> {
     return probe().then(function (ok) {
+      // `MediaSource` here is the one in src/types.d.ts, but lib.dom.d.ts
+      // also declares a global `MediaSource` (the Media Source Extensions
+      // API) and the two merge, so the plain object below needs a cast to
+      // satisfy the merged type rather than the small shape we actually mean.
       if (ok) return { url: swPath(story.id), viaServiceWorker: true };
       return blobUrl(story).then(function (url) { return { url: url, viaServiceWorker: false }; });
     });
   }
 
-  function release(storyId) {
+  function release(storyId: string): void {
     if (blobUrls[storyId]) {
       URL.revokeObjectURL(blobUrls[storyId]);
       delete blobUrls[storyId];
     }
   }
 
-  function releaseAll() {
+  function releaseAll(): void {
     for (var id in blobUrls) if (Object.prototype.hasOwnProperty.call(blobUrls, id)) release(id);
   }
 
   // Cover art stored as an ArrayBuffer -> object URL, cached per story.
-  function artUrl(storyId) {
+  function artUrl(storyId: string): Promise<string | null> {
     if (Object.prototype.hasOwnProperty.call(artUrls, storyId)) return Promise.resolve(artUrls[storyId]);
     return App.store.getArt(storyId).then(function (row) {
-      var url = null;
+      var url: string | null = null;
       if (row && row.data) {
         url = URL.createObjectURL(new Blob([row.data], { type: row.type || 'image/jpeg' }));
       }
@@ -111,11 +116,16 @@ App.media = (function () {
     })['catch'](function () { return null; });
   }
 
-  function forgetArt(storyId) {
+  function forgetArt(storyId: string): void {
     if (artUrls[storyId]) URL.revokeObjectURL(artUrls[storyId]);
     delete artUrls[storyId];
   }
 
+  // MediaModule (src/types.d.ts) declares `usable()` and doesn't list
+  // `probe`/`usingServiceWorker`, but this is the shape the module has
+  // always exported, and player.js/the tests call `probe`, `demote` and
+  // `blobUrl` directly - changing that would be a behaviour change, not a
+  // type annotation, so the mismatch is cast through rather than "fixed".
   return {
     source: source,
     blobUrl: blobUrl,

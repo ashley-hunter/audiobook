@@ -3,12 +3,12 @@
  * Both live in the `kv` object store. They are cached in memory and written
  * back lazily so the phone is not hammered while a story is playing.
  */
-window.App = window.App || {};
+window.App = window.App || ({} as typeof App);
 
-App.settings = (function () {
+App.settings = (function (): SettingsModule {
   'use strict';
 
-  var DEFAULTS = {
+  var DEFAULTS: Settings = {
     childName: '',
     bedtime: '19:30',
     perNight: 2,
@@ -19,27 +19,31 @@ App.settings = (function () {
     showOurs: true
   };
 
-  var current = null;
-  var saveTimer = null;
+  var current: Settings | null = null;
+  var saveTimer: ReturnType<typeof setTimeout> | undefined;
 
-  function load() {
-    return App.store.kvGet('settings', null).then(function (saved) {
-      current = {};
+  function load(): Promise<Settings> {
+    return App.store.kvGet<Settings | null>('settings', null).then(function (saved) {
+      // Built up field by field below, so the cast just states what the loop
+      // is about to make true.
+      current = {} as Settings;
       for (var k in DEFAULTS) if (Object.prototype.hasOwnProperty.call(DEFAULTS, k)) current[k] = DEFAULTS[k];
       if (saved) {
         for (var j in saved) if (Object.prototype.hasOwnProperty.call(current, j)) current[j] = saved[j];
       }
       return current;
     })['catch'](function () {
-      current = JSON.parse(JSON.stringify(DEFAULTS));
+      // A deep clone of DEFAULTS, so it is a Settings even though JSON.parse
+      // returns any.
+      current = JSON.parse(JSON.stringify(DEFAULTS)) as Settings;
       return current;
     });
   }
 
-  function get() { return current || DEFAULTS; }
+  function get(): Settings { return current || DEFAULTS; }
 
-  function set(patch) {
-    if (!current) current = JSON.parse(JSON.stringify(DEFAULTS));
+  function set(patch: Partial<Settings>): Settings {
+    if (!current) current = JSON.parse(JSON.stringify(DEFAULTS)) as Settings;
     for (var k in patch) if (Object.prototype.hasOwnProperty.call(patch, k)) current[k] = patch[k];
     clearTimeout(saveTimer);
     saveTimer = setTimeout(flush, 250);
@@ -48,7 +52,7 @@ App.settings = (function () {
 
   // iOS can tear the app down without warning, so anything pending is written
   // out the moment the app is backgrounded.
-  function flush() {
+  function flush(): void {
     clearTimeout(saveTimer);
     if (current) App.store.kvSet('settings', current)['catch'](function () { return null; });
   }
@@ -56,13 +60,25 @@ App.settings = (function () {
   return { load: load, get: get, set: set, flush: flush, DEFAULTS: DEFAULTS };
 })();
 
-App.stats = (function () {
+/** The stats module's on-disk shape: a running tally of seconds per day, plus
+ * a rolling log of nights, both pruned to the last 30 days. */
+interface NightRecord {
+  d: string;
+  slept: boolean;
+}
+
+interface StatsData {
+  days: { [key: string]: number };
+  nights: NightRecord[];
+}
+
+App.stats = (function (): StatsModule {
   'use strict';
 
-  var data = { days: {}, nights: [] };
-  var saveTimer = null;
+  var data: StatsData = { days: {}, nights: [] };
+  var saveTimer: ReturnType<typeof setTimeout> | undefined;
 
-  function dayKey(when) {
+  function dayKey(when: number): string {
     // A story started at 11pm belongs to that evening, not to the small hours.
     var d = new Date(when);
     if (d.getHours() < 5) d.setDate(d.getDate() - 1);
@@ -73,25 +89,27 @@ App.stats = (function () {
     return d.getFullYear() + '-' + month + '-' + day;
   }
 
-  function load() {
-    return App.store.kvGet('stats', null).then(function (saved) {
-      if (saved && saved.days) data = saved;
+  function load(): Promise<StatsData> {
+    return App.store.kvGet<Partial<StatsData> | null>('stats', null).then(function (saved) {
+      // `days` was just checked truthy; `nights` may be missing on older
+      // saves and is backfilled on the next line.
+      if (saved && saved.days) data = saved as StatsData;
       if (!data.nights) data.nights = [];
       return data;
     })['catch'](function () { return data; });
   }
 
-  function save() {
+  function save(): void {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(flush, 500);
   }
 
-  function flush() {
+  function flush(): void {
     clearTimeout(saveTimer);
     App.store.kvSet('stats', data)['catch'](function () { return null; });
   }
 
-  function addListening(seconds) {
+  function addListening(seconds: number): void {
     if (!seconds || seconds < 1) return;
     var key = dayKey(Date.now());
     data.days[key] = (data.days[key] || 0) + seconds;
@@ -101,7 +119,7 @@ App.stats = (function () {
 
   // sleptThrough: the sleep timer ran out on its own, rather than the story
   // being stopped by hand.
-  function recordNight(sleptThrough) {
+  function recordNight(sleptThrough: boolean): void {
     var key = dayKey(Date.now());
     for (var i = 0; i < data.nights.length; i++) {
       if (data.nights[i].d === key) {
@@ -115,7 +133,7 @@ App.stats = (function () {
     save();
   }
 
-  function prune() {
+  function prune(): void {
     var cutoff = dayKey(Date.now() - 30 * 86400000);
     for (var key in data.days) {
       if (Object.prototype.hasOwnProperty.call(data.days, key) && key < cutoff) delete data.days[key];
@@ -123,7 +141,7 @@ App.stats = (function () {
     data.nights = data.nights.filter(function (n) { return n.d >= cutoff; }).slice(-30);
   }
 
-  function week() {
+  function week(): WeekSummary {
     var seconds = 0;
     var from = dayKey(Date.now() - 6 * 86400000);
     for (var key in data.days) {
@@ -135,11 +153,12 @@ App.stats = (function () {
   }
 
   // How many stories were opened tonight, used for the "stories per night" nudge.
-  function storiesTonight(stories) {
+  function storiesTonight(stories: Story[]): number {
     var key = dayKey(Date.now());
     var count = 0;
     for (var i = 0; i < stories.length; i++) {
-      if (stories[i].lastPlayedAt && dayKey(stories[i].lastPlayedAt) === key) count++;
+      // Cast is safe: just checked truthy on the left of the `&&`.
+      if (stories[i].lastPlayedAt && dayKey(stories[i].lastPlayedAt as number) === key) count++;
     }
     return count;
   }
