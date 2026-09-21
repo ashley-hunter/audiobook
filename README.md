@@ -98,7 +98,12 @@ connection, to register the service worker before anything is cached.
   native or Capacitor wrapper.
 - **No screen wake lock** - the API doesn't exist on iOS.
 - **`audio.volume` is read-only on iOS**, so the sleep timer's fade routes the
-  element through Web Audio and ramps a `GainNode` instead.
+  element through Web Audio and ramps a `GainNode` instead. iOS stops Web
+  Audio when the screen locks, and a routed element is silent while it is
+  stopped, so the element is only routed for the fade's last twenty seconds and
+  is given a fresh, unrouted element the moment the context stops. With the
+  screen locked the story therefore stops at the timer without fading, rather
+  than going silent while it still looks as if it is playing.
 - **Storage can be evicted.** `storage.persist()` is a request, not a
   guarantee, and Safari 12 has no such request at all. The app checks each
   story's first chunk at startup and flags any whose audio is gone.

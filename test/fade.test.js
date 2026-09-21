@@ -74,11 +74,69 @@ const check = out.check;
       return a.volume !== 0.3;
     }));
 
-  /* The graph has to exist before the fade needs it. Built at fade time, from a
-   * timer, it is a graph iOS will never unlock - and joining the element to it
-   * is what silenced the story. */
-  check('the audio graph is ready from the moment play is pressed',
-    (await fadeCtx.pg.evaluate(() => App.player.fadeLevel())) === 1);
+  /* The context has to be unlocked while there is a tap to unlock it with:
+   * created from a timer twenty seconds before the end, it is one iOS will
+   * never start. But the element is not routed through it until a fade needs
+   * it. An element routed through Web Audio can only be heard while the
+   * context runs, and iOS stops the context when the screen locks, when a
+   * call comes in, when the app goes to the background - leaving a story that
+   * looks as if it is playing and makes no sound at all. */
+  check('the audio context is unlocked when play is pressed',
+    (await fadeCtx.pg.evaluate(() => {
+      const ctx = App.player.audioContext();
+      return !!ctx && ctx.state === 'running';
+    })));
+  check('but the story plays straight to the speaker until a fade needs the graph',
+    (await fadeCtx.pg.evaluate(() => App.player.routed())) === false);
+
+  /* What the screen locking does: iOS suspends the context. A story routed
+   * through it goes on "playing" - the position moves, the button says Pause -
+   * with nothing coming out. */
+  const lockScreen = () => fadeCtx.pg.evaluate(async () => {
+    const ctx = App.player.audioContext();
+    await ctx.suspend();
+    // iOS will not start a stopped context again without a tap. Chromium, told
+    // to allow autoplay, would, so it is told no.
+    ctx.resume = () => Promise.resolve();
+  });
+  const unlockScreen = () => fadeCtx.pg.evaluate(async () => {
+    const ctx = App.player.audioContext();
+    delete ctx.resume;
+    await ctx.resume();
+  });
+
+  await lockScreen();
+  const suspended = await fadeCtx.pg.evaluate(async () => {
+    const before = App.player.position();
+    await new Promise((r) => setTimeout(r, 2500));
+    const ctx = App.player.audioContext();
+    return {
+      playing: App.player.playing(),
+      moved: App.player.position() - before,
+      audible: !App.player.routed() || (!!ctx && ctx.state === 'running'),
+    };
+  });
+  check('a context stopped mid-story does not silence it',
+    suspended.playing && suspended.moved > 1.5 && suspended.audible, JSON.stringify(suspended));
+
+  /* And what a story running on into the next one does: the next story loads
+   * into the same element, with no tap to resume a stopped context with. */
+  const next = await fadeCtx.pg.evaluate(async () => {
+    const story = App.debug.stories()[0];
+    await App.player.load(story, { autoplay: true, startAt: 1 });
+    await new Promise((r) => setTimeout(r, 2000));
+    const ctx = App.player.audioContext();
+    return {
+      playing: App.player.playing(),
+      audible: !App.player.routed() || (!!ctx && ctx.state === 'running'),
+    };
+  });
+  check('the next story is not silenced by a context that stopped',
+    next.playing && next.audible, JSON.stringify(next));
+
+  // Back to a running context for the fade itself.
+  await unlockScreen();
+  await fadeCtx.pg.waitForTimeout(300);
 
   await fadeCtx.pg.evaluate(() => App.player.setSleepMinutes(25 / 60));   // 20s fade, 5s in
   await fadeCtx.pg.waitForTimeout(1200);
@@ -99,13 +157,38 @@ const check = out.check;
   }));
   check('the timer still stops the story at the end', !fadeDone.playing && fadeDone.asleep,
     JSON.stringify(fadeDone));
-  check('and leaves the level where a fresh story expects it', fadeDone.level === 1, String(fadeDone.level));
+  check('and lets go of the graph, so the next story plays straight to the speaker',
+    (await fadeCtx.pg.evaluate(() => App.player.routed())) === false);
 
   await fadeCtx.pg.evaluate(() => App.player.wake());
   await fadeCtx.pg.waitForTimeout(700);
-  const wokeUp = await fadeCtx.pg.evaluate(() => ({ playing: App.player.playing(), level: App.player.fadeLevel() }));
+  const wokeUp = await fadeCtx.pg.evaluate(() => ({ playing: App.player.playing(), routed: App.player.routed() }));
   check('pressing play again comes back at full volume',
-    wokeUp.playing && wokeUp.level === 1, JSON.stringify(wokeUp));
+    wokeUp.playing && wokeUp.routed === false, JSON.stringify(wokeUp));
+
+  /* A context that stops during the fade itself - the screen locking in the
+   * last twenty seconds - has the element routed through it. The sound has to
+   * come back, even though the fade is lost. */
+  const midFade = await fadeCtx.pg.evaluate(async () => {
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    App.player.setSleepMinutes(25 / 60);
+    await wait(7000);                              // into the fade
+    const routedInFade = App.player.routed();
+    const ctx0 = App.player.audioContext();
+    await ctx0.suspend();
+    ctx0.resume = () => Promise.resolve();       // no tap on a locked screen
+    await wait(2500);
+    const ctx = App.player.audioContext();
+    return {
+      routedInFade,
+      playing: App.player.playing(),
+      audible: !App.player.routed() || (!!ctx && ctx.state === 'running'),
+    };
+  });
+  check('the fade is where the graph is used',
+    midFade.routedInFade === true, JSON.stringify(midFade));
+  check('and a context stopped during it gives the sound back',
+    midFade.playing && midFade.audible, JSON.stringify(midFade));
   await fadeCtx.c.close();
 
   /* The safety property. An element joined to a context iOS has not unlocked
