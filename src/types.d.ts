@@ -267,6 +267,9 @@ interface TagsModule {
 }
 
 interface ViewsModule {
+  updateBanner(host: HTMLElement, model: { show: boolean }, on: any): void;
+  /** `state` is one of idle, checking, latest, ready or failed. */
+  updateRow(host: HTMLElement, model: { state: string }, on: any): void;
   rows(host: HTMLElement, list: Story[], on: any): void;
   picks(host: HTMLElement, list: Story[], on: any): void;
   moods(host: HTMLElement, names: string[], current: string, on: any): void;

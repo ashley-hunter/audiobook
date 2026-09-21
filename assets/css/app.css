@@ -273,6 +273,104 @@ button:active { opacity: .6; }
   border-bottom: 10px solid transparent;
 }
 
+/* ---------- a new release, waiting ----------
+   A film card like the others in the library, and the one place gold is used
+   for anything but play: the star, and the button that takes the update. It
+   rises in once - the only motion it has - and simply appears for anyone who
+   has asked for less movement. No blur behind it, which an A8 cannot afford. */
+.update {
+  margin-top: 22px;
+  padding: 16px 14px 12px 16px;
+  border-radius: 22px;
+  background: var(--film-2);
+  border: 1px solid var(--hairline);
+  box-shadow: 0 14px 34px rgba(3, 4, 14, .32);
+  -webkit-animation: update-in .7s var(--ease) both;
+  animation: update-in .7s var(--ease) both;
+}
+.update-body { display: flex; align-items: flex-start; }
+.update-star {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin: 3px 13px 0 2px;
+  fill: var(--gold);
+  -webkit-transform-origin: 50% 50%;
+  transform-origin: 50% 50%;
+  -webkit-animation: update-twinkle 1.1s var(--ease) .2s both;
+  animation: update-twinkle 1.1s var(--ease) .2s both;
+}
+.update-text { flex: 1; min-width: 0; }
+.update-title {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 19px;
+  line-height: 1.2;
+  color: var(--cream);
+}
+.update-sub { margin-top: 4px; font-size: 14px; line-height: 1.45; color: var(--cream-70); }
+.update-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+.update-later {
+  min-height: 44px;
+  padding: 0 16px;
+  margin-right: 4px;
+  border-radius: 22px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--cream-70);
+}
+.update-go {
+  min-height: 44px;
+  padding: 0 22px;
+  border-radius: 22px;
+  background-image: linear-gradient(var(--gold-hi), var(--gold-lo));
+  box-shadow: 0 8px 22px rgba(242, 185, 94, .26);
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--ink);
+}
+@-webkit-keyframes update-in {
+  from { opacity: 0; -webkit-transform: translateY(12px); }
+  to { opacity: 1; -webkit-transform: none; }
+}
+@keyframes update-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+@-webkit-keyframes update-twinkle {
+  0% { opacity: 0; -webkit-transform: scale(.4) rotate(-45deg); }
+  60% { opacity: 1; -webkit-transform: scale(1.15) rotate(8deg); }
+  100% { opacity: 1; -webkit-transform: none; }
+}
+@keyframes update-twinkle {
+  0% { opacity: 0; transform: scale(.4) rotate(-45deg); }
+  60% { opacity: 1; transform: scale(1.15) rotate(8deg); }
+  100% { opacity: 1; transform: none; }
+}
+
+/* the same, in parent controls */
+.update-state { font-size: 14px; color: var(--paper-45); }
+.update-state.is-good { color: #34795A; }
+.update-pill {
+  flex: none;
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 14px;
+  margin-left: 12px;
+  border-radius: 16px;
+  background: var(--ink);
+  color: var(--cream);
+  font-size: 14px;
+  font-weight: 700;
+}
+
 .block { margin-top: 32px; }
 .block-row { display: flex; align-items: baseline; justify-content: space-between; }
 .block .display-sm { margin-bottom: 16px; }
@@ -900,6 +998,7 @@ audio { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
   .stars, .moon { animation: none; }
+  .update, .update-star { -webkit-animation: none; animation: none; }
   .player, .paper, .sheet, .disc-fill { transition-duration: .01ms; }
 }
 

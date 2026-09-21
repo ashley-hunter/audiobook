@@ -231,7 +231,59 @@ App.views = (function (): ViewsModule {
     }));
   }
 
+  /* ------------------------------------------------------------- an update */
+
+  // The night sky's own mark: a four-pointed star, drawn rather than typed.
+  var STAR = 'M12 1.5c.5 5.2 4.3 9 9.5 9.5-5.2.5-9 4.3-9.5 9.5-.5-5.2-4.3-9-9.5-9.5 5.2-.5 9-4.3 9.5-9.5z';
+
+  /* A new release waiting to be taken, on the home screen. It announces itself
+   * as a status rather than asking for attention: nothing is wrong, and the
+   * update will happen on its own the next time the app is put away.
+   */
+  function updateBanner(host: HTMLElement, model: { show: boolean }, on: any): void {
+    if (!model.show) {
+      draw(host, null);
+      return;
+    }
+    draw(host, html`
+      <section class="update" role="status" aria-live="polite">
+        <div class="update-body">
+          <svg class="update-star" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d=${STAR}></path></svg>
+          <div class="update-text">
+            <p class="update-title">A new version is ready</p>
+            <p class="update-sub">It takes a moment, and every story keeps its place.</p>
+          </div>
+        </div>
+        <div class="update-actions">
+          <button class="update-later" type="button" onClick=${on.later}>Later</button>
+          <button class="update-go" type="button" onClick=${on.apply}>Update</button>
+        </div>
+      </section>`);
+  }
+
+  /* The same, in parent controls, where it can also be asked for: a grown-up
+   * who put the card off, or who wants to know the app is current. */
+  function updateRow(host: HTMLElement, model: { state: string }, on: any): void {
+    var state = model.state;
+    if (state === 'checking') {
+      draw(host, html`<div class="card-row update-row">Checking for updates<span class="update-state">\u2026</span></div>`);
+      return;
+    }
+    if (state === 'ready') {
+      draw(host, html`<button class="card-row update-row" type="button" onClick=${on.apply}>A new version is ready<span class="update-pill">Update now</span></button>`);
+      return;
+    }
+    var note = state === 'latest'
+      ? html`<span class="update-state is-good">Up to date</span>`
+      : state === 'failed'
+        ? html`<span class="update-state">No signal</span>`
+        : html`<span class="update-state">Check</span>`;
+    draw(host, html`<button class="card-row update-row" type="button" onClick=${on.check}>Check for updates${note}</button>`);
+  }
+
   return {
+    updateBanner: updateBanner,
+    updateRow: updateRow,
     rows: rows,
     picks: picks,
     moods: moods,

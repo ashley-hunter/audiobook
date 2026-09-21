@@ -257,6 +257,10 @@ App.player = (function (): PlayerModule {
     audio!.removeAttribute('src');
     audio!.load();
     App.caps.media.setPlaybackState(false);
+    /* Said out loud, because the element will not say it: load() cancels the
+     * pause event pause() queued a moment ago, so without this the rest of the
+     * app never hears that the story stopped. */
+    emit('state', false);
   }
 
   function toggle(): Promise<unknown> {

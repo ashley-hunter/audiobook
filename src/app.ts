@@ -84,6 +84,7 @@ window.App = window.App || ({} as typeof App);
     // Its rejection has to be returned, or an offline launch - the normal case
     // for this app - raises an unhandled rejection on every boot.
     var registered = navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' });
+    registration = registered;
     var lastCheck = 0;
     function checkForUpdate() {
       // Every trip to the foreground would otherwise be a network request.
@@ -108,6 +109,8 @@ window.App = window.App || ({} as typeof App);
     navigator.serviceWorker.addEventListener('controllerchange', function () {
       if (!hadController) return;          // first run has nothing to replace
       updateWaiting = true;
+      updateState = 'ready';
+      renderUpdate();
       takeUpdate();
     });
 
@@ -122,6 +125,71 @@ window.App = window.App || ({} as typeof App);
   }
 
   var updateWaiting = false;
+
+  /* ---------------------------------------------------------- the update UI */
+
+  /* An update that waits is taken on its own the moment the app is put away.
+   * These are the other routes: a card on the home screen that says one is
+   * ready, and a row in parent controls that can also go and look. Neither is
+   * ever shown over the player or while a story plays - a tap on Update
+   * reloads the page, and that is not something to offer a child mid-story.
+   */
+  var updateState: 'idle' | 'checking' | 'latest' | 'ready' | 'failed' = 'idle';
+  var updatePutOff = false;          // "Later", until the next launch
+  var registration: Promise<ServiceWorkerRegistration> | null = null;
+  var UPDATE_WAIT_MS = 20000;        // how long a found update has to arrive
+
+  function renderUpdate(): void {
+    var playerOpen = $('player').className.indexOf('is-open') >= 0;
+    App.views.updateBanner($('update-host'), {
+      show: updateState === 'ready' && !updatePutOff && !playerOpen && !App.player.playing()
+    }, {
+      apply: applyUpdate,
+      later: function () { updatePutOff = true; renderUpdate(); }
+    });
+    App.views.updateRow($('update-row'), { state: updateState }, {
+      check: checkForUpdateNow,
+      apply: applyUpdate
+    });
+  }
+
+  /* The new worker already controls the page, so a reload is all it takes.
+   * Everything that would be written on the way out is written first, and the
+   * guard against reload loops is not consulted: that guards the automatic
+   * reload, and a tap is not a loop. */
+  function applyUpdate(): void {
+    App.settings.flush();
+    App.stats.flush();
+    App.player.checkpoint(true);
+    window.location.reload();
+  }
+
+  function checkForUpdateNow(): void {
+    if (!registration) {
+      updateState = 'failed';
+      renderUpdate();
+      return;
+    }
+    updateState = 'checking';
+    renderUpdate();
+    registration.then(function (reg) {
+      return reg.update().then(function () { return reg; });
+    }).then(function (reg) {
+      if (updateState !== 'checking') return;          // the controller changed first
+      if (reg.installing || reg.waiting) {
+        // Found, and on its way: the controller change will say it is ready.
+        setTimeout(function () {
+          if (updateState === 'checking') { updateState = 'idle'; renderUpdate(); }
+        }, UPDATE_WAIT_MS);
+        return;
+      }
+      updateState = 'latest';
+      renderUpdate();
+    })['catch'](function () {
+      updateState = 'failed';
+      renderUpdate();
+    });
+  }
 
   function takeUpdate(): void {
     if (!updateWaiting) return;
@@ -406,6 +474,7 @@ window.App = window.App || ({} as typeof App);
     renderPlayer();
     renderParent();
     renderMini();
+    renderUpdate();
   }
 
   function renderHome() {
@@ -660,6 +729,7 @@ window.App = window.App || ({} as typeof App);
       state: function (isPlaying) {
         ui.text($('play-label'), isPlaying ? 'Pause' : 'Play');
         renderMini();
+        renderUpdate();
         if (isPlaying) ui.toggleClass($('asleep'), 'is-on', false);
       },
       sleep: function (secondsLeft) {
@@ -731,6 +801,7 @@ window.App = window.App || ({} as typeof App);
     ui.toggleClass($('player'), 'is-open', true);
     $('player').setAttribute('aria-hidden', 'false');
     renderMini();
+    renderUpdate();
   }
 
   function closePlayer(): void {
@@ -738,6 +809,7 @@ window.App = window.App || ({} as typeof App);
     $('player').setAttribute('aria-hidden', 'true');
     renderHome();
     renderMini();
+    renderUpdate();
   }
 
   /* The mini player, as in Apple Music: whenever a story is loaded and the full

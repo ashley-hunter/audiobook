@@ -888,6 +888,51 @@ const check = out.check;
   check('a deploy does not reload the page out from under an open sheet',
     yanked.openBefore && yanked.survived && yanked.stillOpen, JSON.stringify(yanked));
 
+  /* An update that waits says so, so a grown-up can take it rather than wait
+   * for the app to be put away. It says so on the home screen, never over the
+   * player or while a story plays. */
+  await page.evaluate(() => { document.getElementById('add-close').click(); });
+  await page.waitForTimeout(600);
+  const updateCard = page.getByRole('status').filter({ hasText: 'A new version is ready' });
+  check('a waiting update says so on the home screen', await updateCard.isVisible());
+
+  // The library is empty by now, so there is a story to bring in first.
+  await page.evaluate(() => document.getElementById('add-btn').click());
+  await page.locator('#file-input').setInputFiles(FIXTURE);
+  await page.waitForFunction(() => App.debug.stories().length > 0, null, { timeout: 60000 });
+  await page.evaluate(() => document.getElementById('add-close').click());
+  await page.waitForTimeout(500);
+
+  const hiddenWhilePlaying = await page.evaluate(async () => {
+    const story = App.debug.stories()[0];
+    await App.player.load(story, { autoplay: true });
+    await new Promise((r) => setTimeout(r, 1200));
+    const whilePlaying = !!document.querySelector('#update-host [role="status"]');
+    App.player.unload();
+    await new Promise((r) => setTimeout(r, 400));
+    return { whilePlaying, afterwards: !!document.querySelector('#update-host [role="status"]') };
+  });
+  check('but not while a story is playing', hiddenWhilePlaying.whilePlaying === false,
+    JSON.stringify(hiddenWhilePlaying));
+  check('and comes back once it stops', hiddenWhilePlaying.afterwards === true,
+    JSON.stringify(hiddenWhilePlaying));
+
+  await page.getByRole('button', { name: 'Later' }).click();
+  await page.waitForTimeout(400);
+  check('and goes away when put off', !(await updateCard.isVisible()));
+
+  await page.evaluate(() => { document.getElementById('library').scrollTop = 0; });
+  const moonU = await page.locator('#moon-btn').boundingBox();
+  await page.mouse.move(moonU.x + moonU.width / 2, moonU.y + moonU.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(3400);
+  await page.mouse.up();
+  await page.waitForTimeout(600);
+  check('parent controls still offer it after it was put off',
+    await page.locator('#update-row').getByRole('button', { name: /Update now/ }).isVisible());
+  await page.evaluate(() => document.getElementById('parent-close').click());
+  await page.waitForTimeout(500);
+
   /* The update that just waited is taken the moment the app is put away: a
    * reload nobody can see beats one more launch on the old release. */
   const onHide = await page.evaluate(async () => {
@@ -902,6 +947,25 @@ const check = out.check;
     }
   }).catch(() => ({ survived: false }));
   check('and takes it as soon as the app is put away', !onHide.survived, JSON.stringify(onHide));
+
+  /* And taken explicitly, it reloads there and then - even for a phone that has
+   * already reloaded once this session, because a tap is not a loop. */
+  // The test above ends in a reload of its own; let it land before another.
+  await page.waitForLoadState('networkidle').catch(() => null);
+  await page.waitForTimeout(1200);
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(900);
+  await page.evaluate(() => {
+    document.getElementById('add-btn').click();        // a real tap, so no reload by itself
+    document.getElementById('add-close').click();
+    window.__survived = true;
+    navigator.serviceWorker.dispatchEvent(new Event('controllerchange'));
+  });
+  await page.waitForTimeout(700);
+  await page.getByRole('button', { name: 'Update', exact: true }).click();
+  await page.waitForTimeout(1500);
+  const applied = await page.evaluate(() => !window.__survived).catch(() => true);
+  check('tapping Update reloads into the new release', applied);
 
   // But an app nobody has touched yet still takes the update straight away,
   // or a deploy would never reach the phone until something else forced it.

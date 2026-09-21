@@ -202,3 +202,67 @@ describe('an import in progress', () => {
     expect(ui().getByText('40%')).toBeTruthy();
   });
 });
+
+describe('an update', () => {
+  test('says nothing at all until one is ready', () => {
+    App().views.updateBanner(host, { show: false }, { apply: noop, later: noop });
+    expect(host.textContent).toBe('');
+  });
+
+  test('announces itself politely, without taking over the screen', () => {
+    App().views.updateBanner(host, { show: true }, { apply: noop, later: noop });
+    expect(ui().getByRole('status')).toBeTruthy();
+    expect(ui().getByText('A new version is ready')).toBeTruthy();
+    expect(ui().getByText(/every story keeps its place/)).toBeTruthy();
+  });
+
+  test('can be taken now, or put off', () => {
+    let applied = false;
+    let later = false;
+    App().views.updateBanner(host, { show: true }, {
+      apply: () => { applied = true; },
+      later: () => { later = true; },
+    });
+    fireEvent.click(ui().getByRole('button', { name: 'Later' }));
+    expect(later).toBe(true);
+    fireEvent.click(ui().getByRole('button', { name: 'Update' }));
+    expect(applied).toBe(true);
+  });
+
+  describe('in parent controls', () => {
+    const row = (state, on) => App().views.updateRow(host, { state }, {
+      check: noop, apply: noop, ...on,
+    });
+
+    test('offers to check', () => {
+      let checked = false;
+      row('idle', { check: () => { checked = true; } });
+      fireEvent.click(ui().getByRole('button', { name: /Check for updates/ }));
+      expect(checked).toBe(true);
+    });
+
+    test('says when it is checking, and offers nothing to tap meanwhile', () => {
+      row('checking');
+      expect(ui().getByText('Checking for updates')).toBeTruthy();
+      expect(ui().queryByRole('button')).toBeNull();
+    });
+
+    test('says when there is nothing new', () => {
+      row('latest');
+      expect(ui().getByText('Up to date')).toBeTruthy();
+    });
+
+    test('says when it could not look, and why', () => {
+      row('failed');
+      expect(ui().getByText('No signal')).toBeTruthy();
+    });
+
+    test('offers the update itself when one is ready', () => {
+      let applied = false;
+      row('ready', { apply: () => { applied = true; } });
+      fireEvent.click(ui().getByRole('button', { name: /Update now/ }));
+      expect(applied).toBe(true);
+    });
+  });
+});
+
