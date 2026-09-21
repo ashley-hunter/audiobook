@@ -83,7 +83,23 @@ App.player = (function (): PlayerModule {
       tick();                 // settle the labels on the way out
     });
     el.addEventListener('loadedmetadata', function () { emit('tick', position(), duration()); });
+
+    /* What the element does, in the diagnostics log. These are the events that
+     * would have shown the silent-playback bug for what it was: playing, while
+     * the position stood still. Waiting and stalled are where a phone short of
+     * data - or a route that has stopped delivering - shows itself. */
+    el.addEventListener('play', function () { note('Playing'); });
+    el.addEventListener('pause', function () { note('Paused'); });
+    el.addEventListener('ended', function () { note('Reached the end'); });
+    el.addEventListener('waiting', function () { note('Waiting for audio'); });
+    el.addEventListener('stalled', function () { note('Stalled'); });
     return el;
+  }
+
+  // One line for the log: what happened, where, in which story.
+  function note(what: string): void {
+    var title = story ? ' in "' + story.title + '"' : '';
+    App.log.add('audio', what + ' at ' + App.ui.clock(position()) + title);
   }
 
   function init(): void {
@@ -176,6 +192,8 @@ App.player = (function (): PlayerModule {
 
     return App.media.source(story).then(function (src) {
       usedServiceWorker = src.viaServiceWorker;
+      App.log.add('audio', 'Loading "' + story!.title + '" through ' +
+        (src.viaServiceWorker ? 'the service worker' : 'a Blob'));
       audio!.src = src.url;
       audio!.load();
       var startAt = typeof opts.startAt === 'number' ? opts.startAt : (story!.pos || 0);
@@ -232,6 +250,7 @@ App.player = (function (): PlayerModule {
     if (result && result['catch']) {
       return result['catch'](function (err) {
         if (err && err.name === 'NotAllowedError') {
+          App.log.add('audio', 'The phone would not start playback without a tap');
           emit('error', 'Tap play once more to start the story.');
         } else {
           emit('error', 'That story would not start.');
@@ -324,6 +343,8 @@ App.player = (function (): PlayerModule {
   }
 
   function setSleepMinutes(minutes: number): void {
+    var seconds = Math.round(minutes * 60);
+    App.log.add('sleep', 'Timer set to ' + (seconds % 60 === 0 ? seconds / 60 + ' min' : seconds + 's'));
     armSleep(minutes);
     emit('sleep', sleepLeft());
   }
@@ -333,6 +354,7 @@ App.player = (function (): PlayerModule {
    * and the night ends when it does.
    */
   function setSleepStories(count: number): void {
+    App.log.add('sleep', 'Stopping after ' + count + (count === 1 ? ' story' : ' stories'));
     storiesChosen = count;
     sleepStories = count;
     sleepDeadline = 0;
@@ -444,6 +466,7 @@ App.player = (function (): PlayerModule {
   }
 
   function finishSleep(): void {
+    App.log.add('sleep', 'Timer ran out; story stopped');
     fading = false;
     audio!.pause();          // clears sleepDeadline through the pause handler
     sleepDeadline = 0;
@@ -559,6 +582,10 @@ App.player = (function (): PlayerModule {
   }
 
   function onAudioError(): void {
+    var failure = audio && audio.error;
+    App.log.add('error', 'Media error ' + (failure ? failure.code : '?') +
+      (failure && failure.message ? ': ' + failure.message : '') +
+      (usedServiceWorker ? ', falling back to a Blob' : ''));
     if (!story) return;
     if (usedServiceWorker) {
       // Some WebKit builds will not let a media element load through a service

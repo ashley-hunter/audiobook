@@ -260,6 +260,8 @@ interface CapsModule {
   };
   onInstallAvailable(fn: (available: boolean) => void): void;
   promptInstall(): Promise<boolean>;
+  /** Puts text on the clipboard; resolves false where the phone would not allow it. */
+  copyText(text: string): Promise<boolean>;
 }
 
 interface TagsModule {
@@ -267,6 +269,8 @@ interface TagsModule {
 }
 
 interface ViewsModule {
+  /** `copied` is idle, copied or failed. */
+  logPanel(host: HTMLElement, model: { open: boolean; entries: LogEntry[]; copied: string }, on: any): void;
   updateBanner(host: HTMLElement, model: { show: boolean }, on: any): void;
   /** `state` is one of idle, checking, latest, ready or failed. */
   updateRow(host: HTMLElement, model: { state: string }, on: any): void;
@@ -281,7 +285,28 @@ interface ViewsModule {
   imports(host: HTMLElement, list: ImportRow[], on: any): void;
 }
 
+/** One line of the diagnostics log: when, what kind of thing, and what. */
+interface LogEntry {
+  t: number;
+  k: string;
+  m: string;
+}
+
+interface LogModule {
+  /** `kind` is a short word: audio, story, sleep, update, storage, import, app, error. */
+  add(kind: string, message: string): void;
+  load(): Promise<void>;
+  flush(): void;
+  clear(): void;
+  list(): LogEntry[];
+  /** Oldest first, one entry to a line, ready to paste. */
+  text(): string;
+  stamp(t: number): string;
+  onChange(fn: () => void): void;
+}
+
 declare namespace App {
+  let log: LogModule;
   let ui: UiModule;
   let store: StoreModule;
   let settings: SettingsModule;

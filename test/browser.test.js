@@ -862,6 +862,51 @@ const check = out.check;
   check('and swept up rather than leaking storage',
     orphans.after.indexOf('ghost-story') < 0, JSON.stringify(orphans.after));
 
+  /* ------------------------------------------------- the diagnostics log ---
+     The bugs that were hardest to find - a story silent while it looked as if
+     it was playing - raised no error at all. The phone knew what happened; we
+     did not. So what the player and the app do is written to a log that stays
+     on the phone and survives iOS killing the app. */
+  probing = true;              // the error below is thrown on purpose
+  const logged = await page.evaluate(async () => {
+    setTimeout(() => { throw new Error('a deliberate test error'); }, 0);
+    await new Promise((r) => setTimeout(r, 300));
+    const list = App.log.list();
+    return {
+      kinds: Array.from(new Set(list.map((e) => e.k))),
+      error: list.some((e) => e.k === 'error' && /deliberate test error/.test(e.m)),
+      bounded: list.length <= 300,
+    };
+  });
+  probing = false;
+  check('what the player does is logged', logged.kinds.indexOf('audio') >= 0, JSON.stringify(logged.kinds));
+  check('and so are errors nobody caught', logged.error, JSON.stringify(logged));
+  check('and it never grows past its limit', logged.bounded);
+
+  await page.evaluate(() => App.log.flush());
+  await page.waitForTimeout(400);
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(900);
+  check('it survives the app being closed',
+    await page.evaluate(() => App.log.list().some((e) => /deliberate test error/.test(e.m))));
+
+  await page.evaluate(() => { document.getElementById('library').scrollTop = 0; });
+  const moonL = await page.locator('#moon-btn').boundingBox();
+  await page.mouse.move(moonL.x + moonL.width / 2, moonL.y + moonL.height / 2);
+  await page.mouse.down();
+  await page.waitForTimeout(3400);
+  await page.mouse.up();
+  await page.waitForTimeout(600);
+  const logPanel = page.locator('#log-panel');
+  await logPanel.getByRole('button', { name: /Show the log/ }).click();
+  await page.waitForTimeout(300);
+  check('parent controls show it', await logPanel.getByText(/deliberate test error/).first().isVisible());
+  await logPanel.getByRole('button', { name: 'Clear' }).click();
+  await page.waitForTimeout(300);
+  check('and can clear it', await logPanel.getByText('Nothing logged yet').isVisible());
+  await page.evaluate(() => document.getElementById('parent-close').click());
+  await page.waitForTimeout(500);
+
   /* ------------------------------------ a deploy landing mid-interaction ---
      A new worker claims the page the moment it activates, and the app reloads
      to pick up the new release. Reloading is only ever an optimisation - the

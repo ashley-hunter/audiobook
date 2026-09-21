@@ -249,7 +249,50 @@ App.caps = (function (): CapsModule {
     }
   }
 
+  /* ------------------------------------------------------------ clipboard */
+
+  /* Safari 13.1 and up have navigator.clipboard. Safari 12 does not, and what
+   * it does have is execCommand('copy'), which only works on a real selection
+   * inside a text field, made while a tap is still being handled. So the
+   * fallback puts the text in a read-only textarea, selects the whole of it the
+   * way iOS insists on - setSelectionRange rather than select() - copies, and
+   * takes the textarea away again.
+   */
+  function copyText(text: string): Promise<boolean> {
+    // The DOM types say clipboard is always there; on the floor it is not.
+    var clipboard = (navigator as any).clipboard;
+    if (clipboard && typeof clipboard.writeText === 'function') {
+      return clipboard.writeText(text).then(function () { return true; }, function () {
+        return copyBySelection(text);
+      });
+    }
+    return Promise.resolve(copyBySelection(text));
+  }
+
+  function copyBySelection(text: string): boolean {
+    var area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.top = '0';
+    area.style.left = '0';
+    area.style.opacity = '0';
+    area.style.fontSize = '16px';     // any smaller and iOS zooms the page to it
+    document.body.appendChild(area);
+    var copied = false;
+    try {
+      area.focus();
+      area.setSelectionRange(0, text.length);
+      copied = document.execCommand('copy');
+    } catch (err) {
+      void err;
+    }
+    document.body.removeChild(area);
+    return copied;
+  }
+
   return {
+    copyText: copyText,
     supports: supports,
     readArrayBuffer: readArrayBuffer,
     idle: idle,

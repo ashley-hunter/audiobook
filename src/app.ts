@@ -33,6 +33,8 @@ window.App = window.App || ({} as typeof App);
   /* ==================================================================== boot */
 
   function boot(): void {
+    // Which phone, which iOS: the first thing anyone reading the log will ask.
+    App.log.add('app', 'Opened on ' + navigator.userAgent);
     watchForInteraction();   // before the async work: a tap during boot counts
     // iOS ignores user-scalable=no, so a pinch would zoom the whole app.
     document.addEventListener('gesturestart', function (event) { event.preventDefault(); }, false);
@@ -40,7 +42,7 @@ window.App = window.App || ({} as typeof App);
 
     App.store.open()
       .then(function () {
-        return Promise.all([App.settings.load(), App.stats.load(), App.store.getStories()]);
+        return Promise.all([App.settings.load(), App.stats.load(), App.store.getStories(), App.log.load()]);
       })
       .then(function (results) {
         stories = sortStories(results[2] || []);
@@ -69,9 +71,11 @@ window.App = window.App || ({} as typeof App);
       App.settings.flush();
       App.stats.flush();
       App.player.checkpoint(true);
+      App.log.flush();
     }
     window.addEventListener('pagehide', flush, false);
     document.addEventListener('visibilitychange', function () {
+      App.log.add('app', document.hidden ? 'Put away' : 'Back on screen');
       if (document.hidden) flush();
     }, false);
   }
@@ -110,6 +114,7 @@ window.App = window.App || ({} as typeof App);
       if (!hadController) return;          // first run has nothing to replace
       updateWaiting = true;
       updateState = 'ready';
+      App.log.add('update', 'A new version took over the page');
       renderUpdate();
       takeUpdate();
     });
@@ -158,6 +163,8 @@ window.App = window.App || ({} as typeof App);
    * guard against reload loops is not consulted: that guards the automatic
    * reload, and a tap is not a loop. */
   function applyUpdate(): void {
+    App.log.add('update', 'Reloading into the new version');
+    App.log.flush();
     App.settings.flush();
     App.stats.flush();
     App.player.checkpoint(true);
@@ -184,9 +191,11 @@ window.App = window.App || ({} as typeof App);
         return;
       }
       updateState = 'latest';
+      App.log.add('update', 'Checked: already up to date');
       renderUpdate();
-    })['catch'](function () {
+    })['catch'](function (err) {
       updateState = 'failed';
+      App.log.add('update', 'Check failed: ' + (err && err.message ? err.message : String(err)));
       renderUpdate();
     });
   }
@@ -381,6 +390,7 @@ window.App = window.App || ({} as typeof App);
         var missing = !present;
         if (missing !== !!story.missing) {
           story.missing = missing;
+          if (missing) App.log.add('storage', 'Audio gone for "' + story.title + '"');
           renderAll();
         }
         step();
@@ -773,6 +783,7 @@ window.App = window.App || ({} as typeof App);
     var opts = options || {};
     var story = byId(id);
     if (!story) return;
+    App.log.add('story', (opts.carrySleep ? 'Ran on into "' : 'Opened "') + story.title + '"');
     if (story.missing) {
       ui.toast('This phone cleared that audio. Add the file again.');
       return;
@@ -956,7 +967,30 @@ window.App = window.App || ({} as typeof App);
 
   /* ======================================================= parent controls */
 
+  /* ------------------------------------------------------ diagnostics panel */
+
+  var logOpen = false;
+  var logCopied: 'idle' | 'copied' | 'failed' = 'idle';
+
+  function renderLog(): void {
+    App.views.logPanel($('log-panel'), {
+      open: logOpen,
+      entries: App.log.list(),
+      copied: logCopied
+    }, {
+      toggle: function () { logOpen = !logOpen; logCopied = 'idle'; renderLog(); },
+      copy: function () {
+        App.caps.copyText(App.log.text()).then(function (ok) {
+          logCopied = ok ? 'copied' : 'failed';
+          renderLog();
+        });
+      },
+      clear: function () { logCopied = 'idle'; App.log.clear(); }
+    });
+  }
+
   function renderParent(): void {
+    renderLog();
     var settings = App.settings.get();
     ui.text($('parent-name'), settings.childName || 'Your child');
     ui.text($('ours-name'), settings.childName ? settings.childName + '’s' : 'the');
@@ -1344,6 +1378,7 @@ window.App = window.App || ({} as typeof App);
   }
 
   function deleteStoryNow(story: Story): void {
+    App.log.add('story', 'Removed "' + story.title + '"');
     var playing = App.player.currentStory();
     if (playing && playing.id === story.id) App.player.pause();
     App.media.release(story.id);
@@ -1409,6 +1444,7 @@ window.App = window.App || ({} as typeof App);
       return App.importer.importFile(file, function (fraction) {
         setRowProgress(row, fraction);
       }).then(function (story) {
+        App.log.add('import', 'Imported "' + story.title + '", ' + ui.bytes(story.size));
         stories = sortStories(stories.concat([story]));
         finishRow(row, story);
         renderAll();
@@ -1419,6 +1455,7 @@ window.App = window.App || ({} as typeof App);
         findArtwork(story);
         return next();
       })['catch'](function (err) {
+        App.log.add('import', 'Failed: ' + (err && err.message ? err.message : String(err)));
         failRow(row, err && err.message ? err.message : 'Failed');
         updateImportLabel();
         return next();
@@ -1597,6 +1634,9 @@ window.App = window.App || ({} as typeof App);
     wireHold();
     wireScrubber();
     wirePicksDrag();
+    App.log.onChange(function () {
+      if ($('parent').className.indexOf('is-open') >= 0) renderLog();
+    });
     wireSwipes();
   }
 

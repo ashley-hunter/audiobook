@@ -354,6 +354,72 @@ button:active { opacity: .6; }
   100% { opacity: 1; transform: none; }
 }
 
+/* ---------- diagnostics, at the foot of parent controls ----------
+   A log is data, so the times are monospace and line up, and the kind of each
+   entry is set in the paper world's purple so the eye can run down it. The
+   small grey text is darker than the usual muted tone here: at 12-13px the
+   lighter one does not reach 4.5:1 on white. */
+.log-count { font-size: 14px; color: rgba(26, 23, 48, .62); }
+.log-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  max-height: 320px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  border-top: 1px solid rgba(0, 0, 0, .06);
+}
+.log-entry {
+  display: flex;
+  align-items: baseline;
+  padding: 7px 18px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--paper-ink);
+}
+.log-entry + .log-entry { border-top: 1px solid rgba(0, 0, 0, .04); }
+.log-when {
+  flex: none;
+  width: 64px;
+  font: 500 12px/1.4 var(--mono);
+  color: rgba(26, 23, 48, .62);
+}
+.log-kind {
+  flex: none;
+  width: 60px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--purple);
+}
+.log-what { flex: 1; min-width: 0; word-wrap: break-word; }
+.log-entry.is-error .log-kind,
+.log-entry.is-error .log-what { color: #B3413A; }
+.log-empty {
+  padding: 16px 18px;
+  font-size: 14px;
+  color: rgba(26, 23, 48, .62);
+  border-top: 1px solid rgba(0, 0, 0, .06);
+}
+.log-actions {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px 12px 18px;
+  border-top: 1px solid rgba(0, 0, 0, .06);
+}
+.log-note { flex: 1; min-width: 0; font-size: 13px; color: rgba(26, 23, 48, .62); }
+.log-btn {
+  flex: none;
+  min-height: 36px;
+  padding: 0 16px;
+  margin-left: 8px;
+  border-radius: 18px;
+  background: rgba(0, 0, 0, .06);
+  color: var(--paper-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+.log-btn[disabled] { opacity: .4; }
+
 /* the same, in parent controls */
 .update-state { font-size: 14px; color: var(--paper-45); }
 .update-state.is-good { color: #34795A; }

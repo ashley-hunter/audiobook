@@ -49,6 +49,7 @@ var SHELL = [
   'index.html',
   'manifest.webmanifest',
   'assets/css/app.css',
+  'assets/js/log.js',
   'assets/js/capabilities.js',
   'assets/js/store.js',
   'assets/js/settings.js',

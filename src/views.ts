@@ -281,7 +281,52 @@ App.views = (function (): ViewsModule {
     draw(host, html`<button class="card-row update-row" type="button" onClick=${on.check}>Check for updates${note}</button>`);
   }
 
+  /* ---------------------------------------------------- the diagnostics log */
+
+  /* Folded by default: it is for the grown-up chasing a problem, not for every
+   * visit to parent controls. Opened, newest first, because the thing just
+   * reported is the thing being looked for. Monospace for the times, which are
+   * data and should line up. */
+  function logPanel(host: HTMLElement, model: { open: boolean; entries: LogEntry[]; copied: string }, on: any): void {
+    var count = model.entries.length;
+    var label = count === 1 ? '1 entry' : count + ' entries';
+    var head = html`
+      <button class="card-row log-toggle" type="button" aria-expanded=${model.open ? 'true' : 'false'}
+              onClick=${on.toggle}>
+        ${model.open ? 'Hide the log' : 'Show the log'}<span class="log-count">${label}</span>
+      </button>`;
+    if (!model.open) {
+      draw(host, head);
+      return;
+    }
+
+    var newestFirst = model.entries.slice().reverse();
+    var body = count
+      ? html`<ol class="log-list">${newestFirst.map(function (e: LogEntry, i: number) {
+          return html`<li class=${'log-entry' + (e.k === 'error' ? ' is-error' : '')} key=${e.t + ':' + i}>
+            <span class="log-when">${App.log.stamp(e.t).slice(11)}</span>
+            <span class="log-kind">${e.k}</span>
+            <span class="log-what">${e.m}</span>
+          </li>`;
+        })}</ol>`
+      : html`<p class="log-empty">Nothing logged yet</p>`;
+
+    var note = model.copied === 'copied' ? 'Copied'
+      : model.copied === 'failed' ? 'This phone would not copy it' : '';
+
+    draw(host, [
+      head,
+      body,
+      html`<div class="log-actions">
+        <span class="log-note" role="status">${note}</span>
+        <button class="log-btn" type="button" onClick=${on.copy} disabled=${!count}>Copy</button>
+        <button class="log-btn" type="button" onClick=${on.clear} disabled=${!count}>Clear</button>
+      </div>`
+    ]);
+  }
+
   return {
+    logPanel: logPanel,
     updateBanner: updateBanner,
     updateRow: updateRow,
     rows: rows,

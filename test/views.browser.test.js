@@ -22,6 +22,7 @@ import { within, fireEvent } from '@testing-library/preact';
 const SCRIPTS = [
   '/assets/vendor/preact.umd.js',
   '/assets/vendor/htm.umd.js',
+  '/assets/js/log.js',
   '/assets/js/ui.js',
   '/assets/js/views.js',
 ];
@@ -263,6 +264,50 @@ describe('an update', () => {
       fireEvent.click(ui().getByRole('button', { name: /Update now/ }));
       expect(applied).toBe(true);
     });
+  });
+});
+
+describe('the diagnostics log', () => {
+  const entries = [
+    { t: new Date(2026, 8, 21, 20, 3, 14).getTime(), k: 'audio', m: 'play' },
+    { t: new Date(2026, 8, 21, 20, 3, 20).getTime(), k: 'error', m: 'something broke' },
+  ];
+  const panel = (model, on) => App().views.logPanel(host, {
+    open: false, entries, copied: 'idle', ...model,
+  }, { toggle: noop, copy: noop, clear: noop, ...on });
+
+  test('starts folded, and says how much it holds', () => {
+    panel({});
+    expect(ui().getByRole('button', { name: /Show the log/ })).toBeTruthy();
+    expect(ui().getByText('2 entries')).toBeTruthy();
+    expect(ui().queryByText('something broke')).toBeNull();
+  });
+
+  test('says when there is nothing in it', () => {
+    panel({ open: true, entries: [] });
+    expect(ui().getByText('Nothing logged yet')).toBeTruthy();
+  });
+
+  test('opened, shows the newest first, with the time of each', () => {
+    panel({ open: true });
+    const items = ui().getAllByRole('listitem').map((n) => n.textContent);
+    expect(items[0]).toContain('something broke');
+    expect(items[1]).toContain('play');
+    expect(items[0]).toContain('20:03:20');
+  });
+
+  test('can be copied and cleared', () => {
+    let copied = false;
+    let cleared = false;
+    panel({ open: true }, { copy: () => { copied = true; }, clear: () => { cleared = true; } });
+    fireEvent.click(ui().getByRole('button', { name: 'Copy' }));
+    fireEvent.click(ui().getByRole('button', { name: 'Clear' }));
+    expect(copied && cleared).toBe(true);
+  });
+
+  test('says whether a copy worked', () => {
+    panel({ open: true, copied: 'copied' });
+    expect(ui().getByText('Copied')).toBeTruthy();
   });
 });
 
