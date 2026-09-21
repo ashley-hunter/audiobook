@@ -219,12 +219,8 @@ interface PlayerModule {
   currentSleepStories(): number;
   sleepByStories(): number;
   sleepLeft(): number;
-  fadeLevel(): number | null;
   isAsleep(): boolean;
   ticking(): boolean;
-  /** The element's sound goes through Web Audio, audible only while the context runs. */
-  routed(): boolean;
-  audioContext(): AudioContext | null;
   checkpoint(force: boolean): void;
 }
 
