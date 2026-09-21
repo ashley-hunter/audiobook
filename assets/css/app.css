@@ -1192,8 +1192,8 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
   appearance: none;
   display: block;
   width: 100%;
-  height: 26px;              /* a touchable strip around a 4px line */
-  margin: 0 0 6px;
+  height: 40px;              /* a strip a thumb can land on, around a 4px line */
+  margin: -7px 0 -1px;       /* the extra height is touch area, not space */
   padding: 0;
   outline: none;
   /* Both the played part and the rest are drawn here rather than on the track
@@ -1215,9 +1215,9 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .scrub-range::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 16px;
-  height: 16px;
-  margin-top: -6px;
+  width: 20px;
+  height: 20px;
+  margin-top: -8px;
   border-radius: 50%;
   background: var(--gold-hi);
   box-shadow: 0 2px 8px rgba(0, 0, 0, .45);
@@ -1225,8 +1225,8 @@ button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .scrub-range:disabled::-webkit-slider-thumb { opacity: 0; }
 .scrub-range::-moz-range-track { height: 4px; background: transparent; }
 .scrub-range::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
   border: 0;
   border-radius: 50%;
   background: var(--gold-hi);

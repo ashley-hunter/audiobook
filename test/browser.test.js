@@ -247,6 +247,50 @@ const check = out.check;
   });
   await page.waitForTimeout(300);
 
+  /* The order iOS uses when a finger lets go of a slider: the drag's last
+   * `input`, then `touchend`, then `change`. The seek has to land where the
+   * finger left the thumb, not where playback had got to. */
+  const iosOrder = await page.evaluate(async () => {
+    const el = document.getElementById('scrub');
+    el.value = '25';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('touchend', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 500));
+    return App.player.position();
+  });
+  check('letting go of the slider on iOS seeks to where it was left',
+    iosOrder >= 24 && iosOrder <= 28, 'at=' + iosOrder);
+
+  /* A finger anywhere on the strip, not only on the thumb. iOS will only move
+   * a native slider from its thumb, and ours is small; a drag that starts
+   * beside it did nothing at all. */
+  const touchScrub = (from, to) => page.evaluate(async ([from, to]) => {
+    const el = document.getElementById('scrub');
+    const box = el.getBoundingClientRect();
+    const y = box.top + box.height / 2;
+    const at = (f) => new Touch({ identifier: 7, target: el, clientX: box.left + box.width * f, clientY: y });
+    const fire = (type, f) => el.dispatchEvent(new TouchEvent(type, {
+      touches: type === 'touchend' ? [] : [at(f)], changedTouches: [at(f)], bubbles: true, cancelable: true,
+    }));
+    fire('touchstart', from);
+    const steps = 6;
+    for (let i = 1; i <= steps; i++) fire('touchmove', from + ((to - from) * i) / steps);
+    const shown = document.getElementById('elapsed').textContent;
+    fire('touchend', to);
+    await new Promise((r) => setTimeout(r, 600));
+    return { shown, at: App.player.position(), open: document.getElementById('player').className.indexOf('is-open') >= 0 };
+  }, [from, to]);
+
+  const dragged = await touchScrub(0.2, 0.75);
+  check('dragging from anywhere on the slider seeks there',
+    dragged.at >= 28.5 && dragged.at <= 31.5, JSON.stringify(dragged));
+  check('and shows the time while the finger is down', dragged.shown === '0:30', JSON.stringify(dragged));
+  check('without the drag being taken for a swipe that closes the player', dragged.open, JSON.stringify(dragged));
+
+  const tapped = await touchScrub(0.5, 0.5);
+  check('a tap on the slider jumps there', tapped.at >= 18.5 && tapped.at <= 21.5, JSON.stringify(tapped));
+
   /* ------------------------------------------------------------ sleep timer */
   await page.locator('#open-sheet').click();
   await page.waitForTimeout(500);

@@ -675,10 +675,71 @@ window.App = window.App || ({} as typeof App);
       App.player.seekTo(Number(slider.value) || 0);
     }, false);
 
-    // A drag that ends outside the slider never fires `change` on some builds,
-    // so the tick would stay locked out. These let go of it either way.
-    slider.addEventListener('touchend', releaseScrubber, false);
-    slider.addEventListener('touchcancel', releaseScrubber, false);
+    /* A finger is handled here rather than left to the slider.
+     *
+     * Two things went wrong with iOS's own handling. It only moves a slider
+     * from its thumb, which is small, so a drag that started beside it did
+     * nothing. And when a finger lets go it fires touchend and then change, in
+     * that order: a touchend handler here used to let go of the drag by
+     * repainting the slider at the current playback position, so the change
+     * that followed sought straight back to where the story already was. Every
+     * drag jumped back.
+     *
+     * So a touch anywhere on the strip takes the gesture: the thumb follows
+     * the finger, the time is shown while it is down, and the seek happens
+     * once, where it lifts. A tap is a drag that does not move. Mouse and
+     * keyboard still go through input and change above.
+     */
+    var touching = false;
+
+    function secondsAt(clientX: number): number {
+      var box = slider.getBoundingClientRect();
+      var fraction = box.width ? (clientX - box.left) / box.width : 0;
+      return Math.max(0, Math.min(1, fraction)) * App.player.duration();
+    }
+
+    function preview(seconds: number): void {
+      var total = App.player.duration();
+      slider.value = String(Math.round(seconds));
+      ui.text($('elapsed'), ui.clock(seconds));
+      ui.text($('remaining'), '-' + ui.clock(Math.max(0, total - seconds)));
+      scrubberFill(total ? Math.min(1, seconds / total) : 0);
+    }
+
+    slider.addEventListener('touchstart', function (event: TouchEvent) {
+      if (!App.player.currentStory() || slider.disabled || !(App.player.duration() > 0)) return;
+      event.preventDefault();          // or iOS moves it only from the thumb
+      touching = true;
+      scrubbing = true;
+      preview(secondsAt(event.touches[0].clientX));
+    }, { passive: false });
+
+    slider.addEventListener('touchmove', function (event: TouchEvent) {
+      if (!touching) return;
+      event.preventDefault();
+      preview(secondsAt(event.touches[0].clientX));
+    }, { passive: false });
+
+    slider.addEventListener('touchend', function (event: TouchEvent) {
+      if (!touching) return;
+      event.preventDefault();
+      touching = false;
+      scrubbing = false;
+      var seconds = Number(slider.value) || 0;
+      App.log.add('audio', 'Scrubbed to ' + ui.clock(seconds));
+      App.player.seekTo(seconds);
+    }, false);
+
+    // The system took the gesture - a call, a notification pulled down - so
+    // nothing was chosen, and the slider goes back to following playback.
+    slider.addEventListener('touchcancel', function () {
+      if (!touching) return;
+      touching = false;
+      releaseScrubber();
+    }, false);
+
+    // A mouse drag released outside the slider never fires `change` on some
+    // builds, which would leave the tick locked out for good.
     slider.addEventListener('blur', releaseScrubber, false);
   }
 
